@@ -250,13 +250,15 @@ class orbital4c:
 
     def alpha(self, direction, prec):
         out_orb = orbital4c()
-        alpha_order = np.array([[3, 2, 1, 0],
-                                [3, 2, 1, 0],
-                                [2, 3, 0, 1]])
+
+        alpha_order = np.array([[1, 0, 3, 2],
+                                [1, 0, 3, 2],
+                                [0, 1, 2, 3]])
         
-        alpha_coeff = np.array([[ 1,  1,   1,  1],
-                                [-1j, 1j, -1j, 1j],
-                                [ 1, -1,   1, -1]])
+
+        alpha_coeff = np.array([[ -1,  -1,   +1,  +1],
+                                [+1j, -1j, -1j, +1j],
+                                [ -1, +1,   +1, -1]])
 
         for idx in range(4):
             coeff = alpha_coeff[direction][idx]
@@ -306,20 +308,36 @@ class orbital4c:
 #        out_orb.comp_array = beta@self.comp_array
         beta = np.array([orbital4c.light_speed**2 + shift,
                          orbital4c.light_speed**2 + shift,
-                        -orbital4c.light_speed**2 + shift,
-                        -orbital4c.light_speed**2 + shift])
-        for idx in range(4):
-            out_orb.comp_array[idx] = beta[idx] * self.comp_array[idx]
+                         orbital4c.light_speed**2 + shift,
+                         orbital4c.light_speed**2 + shift])
+        
+
+        mc2 = orbital4c.light_speed**2
+        """
+        out_orb.comp_array[0] = beta[0] * self.comp_array[2]
+        out_orb.comp_array[1] = beta[1] * self.comp_array[3]
+        out_orb.comp_array[2] = beta[2] * self.comp_array[0]
+        out_orb.comp_array[3] = beta[3] * self.comp_array[1]
+        """
+
+        out_orb.comp_array[0] = (mc2) * self.comp_array[2] + shift * self.comp_array[0] 
+        out_orb.comp_array[1] = (mc2) * self.comp_array[3] + shift * self.comp_array[1]
+        out_orb.comp_array[2] = (mc2) * self.comp_array[0] + shift * self.comp_array[2]
+        out_orb.comp_array[3] = (mc2) * self.comp_array[1] + shift * self.comp_array[3]
+
         return out_orb
     
     def beta2(self):
         out_orb = orbital4c()
         beta = np.array([1.0,
                          1.0,
-                        -1.0,
-                        -1.0])
-        for idx in range(4):
-            out_orb.comp_array[idx] = beta[idx] * self.comp_array[idx]
+                         1.0,
+                         1.0])
+        
+        out_orb.comp_array[0] = beta[0] * self.comp_array[2]
+        out_orb.comp_array[1] = beta[1] * self.comp_array[3]
+        out_orb.comp_array[2] = beta[2] * self.comp_array[0]
+        out_orb.comp_array[3] = beta[3] * self.comp_array[1]
         return out_orb
     
     def dot(self, other):
@@ -472,5 +490,9 @@ def calc_non_rel_mu(energy):
         print("Positive energy")
         exit(-1)
 
-    
+def print_norm_debug(orbital):
+    print("Component norms:")
+    for comp in orbital.comp_dict.keys():
+        print(f" - {comp}: {orbital[comp].squaredNorm()}")
+
     

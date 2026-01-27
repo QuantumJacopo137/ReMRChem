@@ -146,7 +146,11 @@ if readOrbitals:
     orbitalName = "spinorb1"
     spinorb1.read(orbitalName)
 else:
-    spinorb1 = sg.make_NR_starting_guess(position, charge, mra, prec)
+    print("Generating starting guess...")
+    spinorb1 = sg.make_NR_starting_guess(position, charge, V_tree, mra, prec)
+
+    print("NEW component norms:")
+    orb.print_norm_debug(spinorb1)
 spinorb2 = spinorb1.ktrs(prec)
 
 if saveGuess:

@@ -3,6 +3,7 @@ import numpy as np
 from scipy.special import eval_genlaguerre
 from orbital4c import complex_fcn as cf
 from orbital4c import orbital as orb
+import one_electron as oneel
 
 def make_starting_guess(mra, prec):
     gauss_tree_tot = vp.FunctionTree(mra)
@@ -26,7 +27,7 @@ def make_starting_guess(mra, prec):
     spinorb1.cropLargeSmall(prec)
     return spinorb1
 
-def make_NR_starting_guess(position, charge, mra, prec):
+def make_NR_starting_guess(position, charge, potential, mra, prec):
     nr_wf_tree = vp.FunctionTree(mra)
     nr_wf_tree.setZero()
     n = 1
@@ -37,14 +38,42 @@ def make_NR_starting_guess(position, charge, mra, prec):
     
     La_comp = cf.complex_fcn()
     La_comp.copy_fcns(real = nr_wf_tree)
+    Sa_comp = cf.complex_fcn()
+    light_speed = orb.orbital4c.light_speed
+    #Sa_comp.copy_fcns(real = nr_wf_tree*(1/(light_speed)))
 
     spinorb1 = orb.orbital4c()
-    spinorb2 = orb.orbital4c()
+
     spinorb1.copy_components(La = La_comp)
-    spinorb1.init_small_components(prec/10)
+    #spinorb1.copy_components(Lb = La_comp)
+
+    #spinorb1.copy_components(Sa = La_comp)
+    #spinorb1.copy_components(Sb = Sa_comp)
+    spinorb1 = init_Right_components(spinorb1, charge, potential, prec/10)
     spinorb1.normalize()
     spinorb1.cropLargeSmall(prec)
     return spinorb1
+
+
+def init_Right_components(spinorb, charge, potential, prec):
+    light_speed = orb.orbital4c.light_speed
+    energy_guess = oneel.analytic_1s(light_speed, 1, -1, charge)
+    V_psi_alpha = potential * spinorb.comp_array[0]
+    V_psi_beta = potential * spinorb.comp_array[1]
+    psiL_alpha = spinorb.comp_array[0]
+    psiL_beta = spinorb.comp_array[1]
+    psiL_alpha_grad = psiL_alpha.gradient('ABGV')
+    psiL_beta_grad = psiL_beta.gradient('ABGV')
+
+    psiR_alpha = psiL_alpha_grad[0] + (psiL_beta_grad[1]- 1j*psiL_beta_grad[2])
+    psiR_beta = (psiL_alpha_grad[1] + 1j*psiL_alpha_grad[2]) + psiL_beta_grad[0]
+
+    psiR_alpha = -(1/light_speed**2)*(-1j*light_speed*psiR_alpha + V_psi_alpha - energy_guess * psiL_alpha)
+    psiR_beta = -(1/light_speed**2)*(-1j*light_speed*psiR_beta + V_psi_beta - energy_guess * psiL_beta)
+    spinorb.copy_components(Sa = psiR_alpha)
+    spinorb.copy_components(Sb = psiR_beta)
+    return spinorb
+
 
 #returns the value of the radial WF in the point r
 # 1. the nucleus is assumed infintely heavy (mass of electron and Bohr radius used)

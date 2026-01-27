@@ -47,18 +47,22 @@ def gs_D_1e(spinorb1, potential, mra, prec, thr, derivative, charge,  output_fil
 #       tmp = orb.apply_dirac_hamiltonian(v_psi, prec, energy, der = derivative)
         tmp.cropLargeSmall(prec)
         new_orbital = orb.apply_dirac_hamiltonian(tmp, prec, energy, der = derivative)
+
 #        new_orbital =  orb.apply_helmholtz(tmp, mu, prec)
         if(idx > 10):
             new_orbital = new_orbital + spinorb1
         new_orbital.cropLargeSmall(prec)
         new_orbital.normalize()
+
+        print("NEW NORMS:")
+        orb.print_norm_debug(new_orbital)
         delta_psi = new_orbital - spinorb1
         deltasq = delta_psi.squaredNorm()
         error_norm = np.sqrt(deltasq)
         #print('Error', error_norm)
         delta_e = np.abs(energy - old_energy)
         #print('Delta E', delta_e)
-        print('     Energy',energy - light_speed**2)
+        print('     Energy',energy )
         old_energy = energy
         spinorb1 = new_orbital
         print('     Converged? ', error_norm, ' > ', thr, '  ----  ', delta_e, ' > ',prec/10)
@@ -88,6 +92,7 @@ def gs_D_1e(spinorb1, potential, mra, prec, thr, derivative, charge,  output_fil
     print() 
     printing_string = f"Exact Energy = {energy_1s - c2}"
     write_and_print(output_file,printing_string)
+
     printing_string = f"Dirac Energy = {energy - c2}"
     write_and_print(output_file,printing_string)
     printing_string = f"Kutze Energy = {energy_kutzelnigg}"
