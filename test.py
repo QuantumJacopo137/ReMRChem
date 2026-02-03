@@ -1,6 +1,8 @@
 ########## Define Enviroment #################
+from scipy.differentiate import derivative
 from orbital4c import complex_fcn as cf
 from orbital4c import orbital as orb
+from orbital4c import orbital_2c as orb2c
 from orbital4c import nuclear_potential as nucpot
 from orbital4c import r3m as r3m
 from scipy.constants import hbar
@@ -66,7 +68,10 @@ if (auto_box):
 ################# Call MRA #######################
 mra = vp.MultiResolutionAnalysis(box=[-box, box], order=order, max_depth=25)
 orb.orbital4c.mra = mra
+orb2c.orbital2c.mra = mra
 orb.orbital4c.light_speed = light_speed
+orb2c.orbital2c.light_speed = light_speed
+
 cf.complex_fcn.mra = mra
 charge = molecule[0][1]
 position = [molecule[0][2],molecule[0][3],molecule[0][4]]
@@ -140,77 +145,136 @@ print(molecule)
 print()
 print()
 #############################START WITH CALCULATION###################################
-spinorb1 = orb.orbital4c()
-spinorb2 = orb.orbital4c()
-if readOrbitals:
-    orbitalName = "spinorb1"
-    spinorb1.read(orbitalName)
+
+if two_components:
+    Weyl_Spinor = orb2c.orbital2c()
+    Weyl_Spinor = sg.make_NR_starting_guess(position, charge, V_tree, mra, prec, comp = 2)
+
+    #Dirac_Spinor = orb.orbital4c()
+    #Weyl_Spinors = orb.orbital4c()
+    #Dirac_Spinor = sg.make_NR_starting_guess(position, charge, V_tree, mra, prec, comp = 4)
+
+
+    Weyl_Spinors = oneel.gs_Weyl_1e(Weyl_Spinor, V_tree, mra, prec, thr, derivative, charge, output_file)
+    print()
+    #print ("------------------------------------")
+    #print('DIRAC SPINOR CALCULATION:')
+    #Dirac_Spinor = oneel.gs_D_1e(Dirac_Spinor, V_tree, mra, prec, thr, derivative, charge, output_file)
+
+
+    
+    
+
+    #print("FINAL component norms:")
+    #print("Weyl_L + Weyl_R:")
+    #orb.print_norm_debug(Weyl_Spinors)
+    
+    #print("Dirac Spinor:")
+    #orb.print_norm_debug(Dirac_Spinor)
+
+
+    #difference_L_alpha = Weyl_Spinors['La'] - Dirac_Spinor['La']
+    #difference_L_beta  = Weyl_Spinors['Lb'] - Dirac_Spinor['Lb']
+    #difference_R_alpha = Weyl_Spinors['Sa'] - Dirac_Spinor['Sa']
+    #difference_R_beta  = Weyl_Spinors['Sb'] - Dirac_Spinor['Sb']
+
+
+    #print("Difference in L-alpha norm:", difference_L_alpha.squaredNorm())
+    #print("Difference in L-beta  norm:", difference_L_beta.squaredNorm())
+    #print("Difference in R-alpha norm:", difference_R_alpha.squaredNorm())
+    #print("Difference in R-beta  norm:", difference_R_beta.squaredNorm())
+    #Helicity_2c = Weyl_Spinor.sigma_p(prec, derivative)
+    #V_psi = V_tree * Weyl_Spinor    
+    #Weyl_R = Weyl_Spinor.Restricted_Kinetic_Balance(V_psi, -0.5+light_speed**2, derivative, prec)
+    #Weyl_R = Weyl_Spinor
+    #energy = orb2c.calc_energy_Weyl_2c(Weyl_Spinor, Weyl_R, Helicity_2c, V_psi, V_tree,prec)
+    #print("Initial energy (2c) =", energy)
+    #print("Initial orbital energy (2c):", energy - light_speed**2)
+
+
+
 else:
-    print("Generating starting guess...")
-    spinorb1 = sg.make_NR_starting_guess(position, charge, V_tree, mra, prec)
+    spinorb1 = orb.orbital4c()
+    spinorb2 = orb.orbital4c()
+    if readOrbitals:
+        orbitalName = "spinorb1"
+        spinorb1.read(orbitalName)
+    else:
+        print("Generating starting guess...")
+        spinorb1 = sg.make_NR_starting_guess(position, charge, V_tree, mra, prec)
 
-    print("NEW component norms:")
-    orb.print_norm_debug(spinorb1)
-spinorb2 = spinorb1.ktrs(prec)
+        print("NEW component norms:")
+        orb.print_norm_debug(spinorb1)
+    spinorb2 = spinorb1.ktrs(prec)
+    if (two_electrons):
+        print("Generating second orbital by KTRS...")
+        print("NEW component norms:")
+        orb.print_norm_debug(spinorb2)
+        print("Int overlap between orbitals:", spinorb1.dot(spinorb2).real)
 
-if saveGuess:
-    spinorb1.save("guess1")
+    if saveGuess:
+        spinorb1.save("guess1")
 
-run_D_1e       = scf and not D2 and not two_electrons
-run_D2_1e      = scf and     D2 and not two_electrons
-run_D_2e       = scf and not D2 and     two_electrons and not ktrs
-run_D2_2e      = scf and     D2 and     two_electrons and not ktrs
-run_D_2e_ktrs  = scf and not D2 and     two_electrons and     ktrs
-run_D2_2e_ktrs = scf and     D2 and     two_electrons and     ktrs
+    run_D_1e       = scf and not D2 and not two_electrons
+    run_D2_1e      = scf and     D2 and not two_electrons
+    run_D_2e       = scf and not D2 and     two_electrons and not ktrs
+    run_D2_2e      = scf and     D2 and     two_electrons and not ktrs
+    run_D_2e_ktrs  = scf and not D2 and     two_electrons and     ktrs
+    run_D2_2e_ktrs = scf and     D2 and     two_electrons and     ktrs
 
 
 
-if run_D_1e:
-    spinorb1 = oneel.gs_D_1e(spinorb1, V_tree, mra, prec, thr, derivative, charge, output_file)
+    if run_D_1e:
+        spinorb1 = oneel.gs_D_1e(spinorb1, V_tree, mra, prec, thr, derivative, charge, output_file)
 
-if run_D2_1e:
-    spinorb1 = oneel.gs_D2_1e(spinorb1, V_tree, mra, prec, thr, derivative, charge, output_file)
+    if run_D2_1e:
+        spinorb1 = oneel.gs_D2_1e(spinorb1, V_tree, mra, prec, thr, derivative, charge, output_file)
 
-if run_D_2e:
-    print("NOT PROPERLY TESTED")
-    exit(-1)
-    spinorb1, spinorb2 = twoel.coulomb_gs_gen([spinorb1, spinorb2], V_tree, mra, prec, derivative)
+    if run_D_2e:
+        print("NOT PROPERLY TESTED")
+        exit(-1)
+        spinorb1, spinorb2 = twoel.coulomb_gs_gen([spinorb1, spinorb2], V_tree, mra, prec, derivative)
 
-if run_D2_2e:
-    print("NOT PROPERLY TESTED")
-    exit(-1)
-    spinorb1, spinorb2 = twoel.coulomb_2e_D2([spinorb1, spinorb2], V_tree, mra, prec, derivative)
+    if run_D2_2e:
+        print("NOT PROPERLY TESTED")
+        exit(-1)
+        spinorb1, spinorb2 = twoel.coulomb_2e_D2([spinorb1, spinorb2], V_tree, mra, prec, derivative)
 
-if run_D_2e_ktrs:
-    spinorb1, spinorb2 = twoel.coulomb_gs_2e(spinorb1, V_tree, mra, prec, thr, derivative, output_file)
+    if run_D_2e_ktrs:
+        spinorb1, spinorb2 = twoel.coulomb_gs_2e(spinorb1, V_tree, mra, prec, thr, derivative, output_file)
 
-if run_D2_2e_ktrs:
-    spinorb1, spinorb2 = twoel.coulomb_2e_D2_J([spinorb1, spinorb2], V_tree, mra, prec, thr, derivative, output_file)
+    if run_D2_2e_ktrs:
+        spinorb1, spinorb2 = twoel.coulomb_2e_D2_J([spinorb1, spinorb2], V_tree, mra, prec, thr, derivative, output_file)
 
-if runGaunt:
-    twoel.calcGauntPert(spinorb1, spinorb2, mra, prec)
+    if runGaunt:
+        twoel.calcGauntPert(spinorb1, spinorb2, mra, prec)
 
-if runGaugeA:
-    twoel.calcGaugePertA(spinorb1, spinorb2, mra, prec)
+    if runGaugeA:
+        twoel.calcGaugePertA(spinorb1, spinorb2, mra, prec)
 
-if runGaugeB:
-    twoel.calcGaugePertB(spinorb1, spinorb2, mra, prec)
+    if runGaugeB:
+        twoel.calcGaugePertB(spinorb1, spinorb2, mra, prec)
 
-if runGaugeC:
-    twoel.calcGaugePertC(spinorb1, spinorb2, mra, prec)
+    if runGaugeC:
+        twoel.calcGaugePertC(spinorb1, spinorb2, mra, prec)
 
-if runGaugeD:
-    twoel.calcGaugePertD(spinorb1, spinorb2, mra, prec)
+    if runGaugeD:
+        twoel.calcGaugePertD(spinorb1, spinorb2, mra, prec)
 
-if runGaugeDelta:
-    twoel.calcGaugeDelta(spinorb1, spinorb2, mra, prec)
+    if runGaugeDelta:
+        twoel.calcGaugeDelta(spinorb1, spinorb2, mra, prec)
 
-if saveOrbitals:
-    spinorb1.save("spinorb1")
+    if saveOrbitals:
+        spinorb1.save("spinorb1")
 
 
 
 oneel.write_and_print(output_file, "")
+
+if two_components:
+    oneel.write_and_print(output_file, "-> 2 COMPONENTS CALCULATION ")
+else:
+    oneel.write_and_print(output_file, "-> 4 COMPONENTS CALCULATION ")      
 
 oneel.write_and_print(output_file, "PARAMETERS:")
 oneel.write_and_print(output_file, f"molecule    = {molecule}")

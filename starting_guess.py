@@ -3,6 +3,7 @@ import numpy as np
 from scipy.special import eval_genlaguerre
 from orbital4c import complex_fcn as cf
 from orbital4c import orbital as orb
+from orbital4c import orbital_2c as orb2c
 import one_electron as oneel
 
 def make_starting_guess(mra, prec):
@@ -27,7 +28,7 @@ def make_starting_guess(mra, prec):
     spinorb1.cropLargeSmall(prec)
     return spinorb1
 
-def make_NR_starting_guess(position, charge, potential, mra, prec):
+def make_NR_starting_guess(position, charge, potential, mra, prec, comp = 4):
     nr_wf_tree = vp.FunctionTree(mra)
     nr_wf_tree.setZero()
     n = 1
@@ -41,21 +42,27 @@ def make_NR_starting_guess(position, charge, potential, mra, prec):
     Sa_comp = cf.complex_fcn()
     light_speed = orb.orbital4c.light_speed
     #Sa_comp.copy_fcns(real = nr_wf_tree*(1/(light_speed)))
+    if (comp == 2):
+        spinorb1 = orb2c.orbital2c()
+        spinorb1.copy_components(alpha = La_comp)
+        spinorb1['beta'].setZero()
+        spinorb1.normalize()
+        
+    else:
+        spinorb1 = orb.orbital4c()
 
-    spinorb1 = orb.orbital4c()
+        spinorb1.copy_components(La = La_comp)
+        #spinorb1.copy_components(Lb = La_comp)
 
-    spinorb1.copy_components(La = La_comp)
-    #spinorb1.copy_components(Lb = La_comp)
-
-    #spinorb1.copy_components(Sa = La_comp)
-    #spinorb1.copy_components(Sb = Sa_comp)
-    spinorb1 = init_Right_components(spinorb1, charge, potential, prec/10)
-    spinorb1.normalize()
-    spinorb1.cropLargeSmall(prec)
+        spinorb1.copy_components(Sa = La_comp)
+        #spinorb1.copy_components(Sb = Sa_comp)
+        #spinorb1 = init_Right_components(spinorb1, charge, potential)
+        spinorb1.normalize()
+        spinorb1.cropLargeSmall(prec)
     return spinorb1
 
 
-def init_Right_components(spinorb, charge, potential, prec):
+def init_Right_components(spinorb, charge, potential):
     light_speed = orb.orbital4c.light_speed
     energy_guess = oneel.analytic_1s(light_speed, 1, -1, charge)
     V_psi_alpha = potential * spinorb.comp_array[0]
