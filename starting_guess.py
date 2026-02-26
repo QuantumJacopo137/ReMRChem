@@ -28,11 +28,10 @@ def make_starting_guess(mra, prec):
     spinorb1.cropLargeSmall(prec)
     return spinorb1
 
-def make_NR_starting_guess(position, charge, potential, mra, prec, comp = 4):
+def make_NR_starting_guess(position, charge, mra, prec, comp = 4, n=1, l=0):
     nr_wf_tree = vp.FunctionTree(mra)
     nr_wf_tree.setZero()
-    n = 1
-    l = 0
+
     Peps = vp.ScalingProjector(mra, prec)
     guess = lambda x : wf_hydrogenionic_atom(n,l,[x[0]-position[0], x[1]-position[1], x[2]-position[2]],charge)
     nr_wf_tree = Peps(guess)

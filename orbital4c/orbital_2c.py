@@ -117,8 +117,16 @@ class orbital2c:
             self.copy_component(beta, 'beta')
         if(nr_of_functions == 0):
             print("WARNING: No component copied!")
+    
+    def single_func_multiply(self, function, prec):
+        out_orb = orbital2c()
+        for comp in self.comp_dict.keys():
+            out_orb[comp] = cf.multiply(prec, self[comp], function)
+        return out_orb
 
-    def Restricted_Kinetic_Balance(self, V_Psi, energy, derivative, prec, L_to_R = True):
+
+    # THIS IS THE SIMPLIFIED VERSION OF THE RKB CONDITION, THE OFF DIAGONAL TERMS OF THE F MATRIX ARE NEGLECTED
+    def apply_R(self, V_Psi, energy, derivative, prec, L_to_R = True):
     # initalize the small components based on the kinetic balance
 
         sigma_p_weyl = orbital2c()  
@@ -136,9 +144,17 @@ class orbital2c:
 
         return prefactor * RKB_spinor
         
+    def apply_R_full(spinor_array, el_id,  F_ij, V_Psi, energy, derivative, prec, L_to_R = True):
+        free_R_spinor = spinor_array[el_id].apply_R(V_Psi, energy, derivative, prec, L_to_R)
+        light_speed = spinor_array[el_id].light_speed
+        prefactor = -1.0/(light_speed**2)
+        for i in range(4):
+            if i != el_id:
+                coupling_term = (F_ij[el_id, i] * spinor_array[i])
+                free_R_spinor = free_R_spinor -  prefactor  * coupling_term
 
+        return free_R_spinor
 
-        
     def derivative(self, dir = 0, der = 'ABGV'):
         orb_der = orbital2c()
         for key in self.comp_dict:
@@ -212,6 +228,8 @@ class orbital2c:
         vp.advanced.add(prec, density.real, add_vector_real)
         vp.advanced.add(prec, density.imag, add_vector_imag)
         return density
+    
+
 
     def sigma(self, direction, prec):
 
@@ -474,6 +492,9 @@ def calc_energy_Weyl_2c(Psi_L, Psi_R, potential, prec):
     energy *= (1.0/(Dirac_Sq_Norm))
     
     return energy
+
+#def overlap_density_balanced(spinor_array, V_psi_array, pi_psi_array, prec):
+
 
 def calc_dirac_mu(energy, light_speed):
     val = (light_speed**4-energy**2)/light_speed**2

@@ -19,6 +19,7 @@ import sys, getopt
 
 import one_electron as oneel
 import two_electron as twoel
+import Four_el as fourel
 import starting_guess as sg
 
 import importlib
@@ -147,49 +148,45 @@ print()
 #############################START WITH CALCULATION###################################
 
 if two_components:
-    Weyl_Spinor = orb2c.orbital2c()
-    Weyl_Spinor = sg.make_NR_starting_guess(position, charge, V_tree, mra, prec, comp = 2)
+    if not four_el:
+        Weyl_Spinor = orb2c.orbital2c()
+        Weyl_Spinor = sg.make_NR_starting_guess(position, charge, mra, prec, comp = 2)
 
-    #Dirac_Spinor = orb.orbital4c()
-    #Weyl_Spinors = orb.orbital4c()
-    #Dirac_Spinor = sg.make_NR_starting_guess(position, charge, V_tree, mra, prec, comp = 4)
+        Weyl_Spinors = oneel.gs_Weyl_1e(Weyl_Spinor, V_tree, mra, prec, thr, derivative, charge, output_file)
+        print()
+    else:
+        #spinorb_array = fourel.init_4_spinors(position, charge, mra, prec)
+        spinorb_array = [orb2c.orbital2c() for i in range(4)]
+        for i in range(4):
+            name = f"W_spinor{i}"
+            spinorb_array[i].read(name)
 
+        en_guess_array = []
+        en_guess_array.append(fourel.analytic_1s(light_speed, 1, -1, charge))
+        en_guess_array.append(fourel.analytic_1s(light_speed, 1, -1, charge))
+        en_guess_array.append(fourel.analytic_1s(light_speed, 2, -1, charge))
+        en_guess_array.append(fourel.analytic_1s(light_speed, 2, -1, charge))
 
-    Weyl_Spinors = oneel.gs_Weyl_1e(Weyl_Spinor, V_tree, mra, prec, thr, derivative, charge, output_file)
-    print()
-    #print ("------------------------------------")
-    #print('DIRAC SPINOR CALCULATION:')
-    #Dirac_Spinor = oneel.gs_D_1e(Dirac_Spinor, V_tree, mra, prec, thr, derivative, charge, output_file)
+        print("Initial energy guesses:")
+        for i in range(4):
+            print(f"Spinor {i+1} energy guess: {en_guess_array[i]-light_speed**2} Ha, {en_guess_array[i]} a.u.")
 
-
-    
-    
-
-    #print("FINAL component norms:")
-    #print("Weyl_L + Weyl_R:")
-    #orb.print_norm_debug(Weyl_Spinors)
-    
-    #print("Dirac Spinor:")
-    #orb.print_norm_debug(Dirac_Spinor)
-
-
-    #difference_L_alpha = Weyl_Spinors['La'] - Dirac_Spinor['La']
-    #difference_L_beta  = Weyl_Spinors['Lb'] - Dirac_Spinor['Lb']
-    #difference_R_alpha = Weyl_Spinors['Sa'] - Dirac_Spinor['Sa']
-    #difference_R_beta  = Weyl_Spinors['Sb'] - Dirac_Spinor['Sb']
-
-
-    #print("Difference in L-alpha norm:", difference_L_alpha.squaredNorm())
-    #print("Difference in L-beta  norm:", difference_L_beta.squaredNorm())
-    #print("Difference in R-alpha norm:", difference_R_alpha.squaredNorm())
-    #print("Difference in R-beta  norm:", difference_R_beta.squaredNorm())
-    #Helicity_2c = Weyl_Spinor.sigma_p(prec, derivative)
-    #V_psi = V_tree * Weyl_Spinor    
-    #Weyl_R = Weyl_Spinor.Restricted_Kinetic_Balance(V_psi, -0.5+light_speed**2, derivative, prec)
-    #Weyl_R = Weyl_Spinor
-    #energy = orb2c.calc_energy_Weyl_2c(Weyl_Spinor, Weyl_R, Helicity_2c, V_psi, V_tree,prec)
-    #print("Initial energy (2c) =", energy)
-    #print("Initial orbital energy (2c):", energy - light_speed**2)
+        #spinorb_array = fourel.Lowdin_orthonormalize_4c(spinorb_array, mra, prec)
+        spinorb_array, en_guess_array = fourel.scf_4el_cheat(spinorb_array, en_guess_array, V_tree, mra, prec, thr, derivative, output_file)
+        
+        
+        #spinorb_array, en_guess_array = fourel.gs_Weyl_4e(spinorb_array, en_guess_array, V_tree, mra, prec, thr, derivative, charge, output_file, 1)
+        
+        print()
+        print("NEW component norms:")
+        for i in range(4):
+            print(f"Spinor {i+1} norm:")
+            orb2c.print_norm_debug(spinorb_array[i])    
+        
+        print()
+        print("Energies:")
+        for i in range(4):
+            print(f"Spinor {i+1} energy: {en_guess_array[i]-light_speed**2} Ha")
 
 
 
@@ -201,7 +198,7 @@ else:
         spinorb1.read(orbitalName)
     else:
         print("Generating starting guess...")
-        spinorb1 = sg.make_NR_starting_guess(position, charge, V_tree, mra, prec)
+        spinorb1 = sg.make_NR_starting_guess(position, charge, mra, prec)
 
         print("NEW component norms:")
         orb.print_norm_debug(spinorb1)
