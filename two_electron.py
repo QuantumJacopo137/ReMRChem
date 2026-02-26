@@ -281,7 +281,6 @@ def coulomb_gs_2e(spinorb1, potential, mra, prec, thr, derivative, output_file):
         hd_psi_1 = orb.apply_dirac_hamiltonian(spinorb1, prec, 0.0, der = derivative)
         hd_11 = spinorb1.dot(hd_psi_1)
         
-        print("     Orbital energy", -(hd_11 - light_speed*light_speed).real)
         # Applying nuclear potential to spin orbit 1 and 2
         v_psi_1 = orb.apply_potential(-1.0, potential, spinorb1, prec)
         V1 = spinorb1.dot(v_psi_1)
@@ -298,6 +297,8 @@ def coulomb_gs_2e(spinorb1, potential, mra, prec, thr, derivative, output_file):
         
         eps = hd_V_11.real + JmK.real
         E_tot_JK =  2*eps - JmK.real
+        print("     Orbital energy", (eps - light_speed*light_speed).real)
+        print("     Total energy  ", (E_tot_JK - 2.0*light_speed*light_speed).real)
 
         
 
@@ -339,6 +340,7 @@ def coulomb_gs_2e(spinorb1, potential, mra, prec, thr, derivative, output_file):
 
     E_kutzelnigg = 2 * (np.sqrt(exp_val_d2)-light_speed**2)
 
+    orb.print_norm_debug(spinorb1)
 
     print()
     print()
