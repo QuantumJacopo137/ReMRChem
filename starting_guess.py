@@ -31,21 +31,23 @@ def make_starting_guess(mra, prec):
 def make_NR_starting_guess(position, charge, mra, prec, comp = 4, n=1, l=0):
     nr_wf_tree = vp.FunctionTree(mra)
     nr_wf_tree.setZero()
-
+    print("Generated the non-relativistic starting guess for n =", n, "and l =", l, "with charge =", charge)
     Peps = vp.ScalingProjector(mra, prec)
     guess = lambda x : wf_hydrogenionic_atom(n,l,[x[0]-position[0], x[1]-position[1], x[2]-position[2]],charge)
     nr_wf_tree = Peps(guess)
     
     La_comp = cf.complex_fcn()
     La_comp.copy_fcns(real = nr_wf_tree)
+
     Sa_comp = cf.complex_fcn()
-    light_speed = orb.orbital4c.light_speed
-    #Sa_comp.copy_fcns(real = nr_wf_tree*(1/(light_speed)))
+    
     if (comp == 2):
         spinorb1 = orb2c.orbital2c()
-        spinorb1.copy_components(alpha = La_comp)
-        spinorb1['beta'].setZero()
+        spinorb1.setZero()
+        spinorb1.copy_component(La_comp, "alpha")
         spinorb1.normalize()
+        
+        print(f"Initial norm of the 2-component spinor: {spinorb1}")
         
     else:
         spinorb1 = orb.orbital4c()
@@ -76,6 +78,8 @@ def init_Right_components(spinorb, charge, potential):
 
     psiR_alpha = -(1/light_speed**2)*(-1j*light_speed*psiR_alpha + V_psi_alpha - energy_guess * psiL_alpha)
     psiR_beta = -(1/light_speed**2)*(-1j*light_speed*psiR_beta + V_psi_beta - energy_guess * psiL_beta)
+
+    
     spinorb.copy_components(Sa = psiR_alpha)
     spinorb.copy_components(Sb = psiR_beta)
     return spinorb
@@ -86,7 +90,7 @@ def init_Right_components(spinorb, charge, potential):
 # 2. the nucleus is placed in the origin
 # 3. atomic units are assumed a0 = 1  hbar = 1  me = 1  4pie0 = 1
 def radial_wf_hydrogenionic_atom(n,l,r,Z):
-    rho = 2 * Z * r
+    rho = 2 * Z * r / n # I had to add the n at the denominator as it was missing.
     slater = np.exp(-rho/2)
     polynomial = eval_genlaguerre(n-l-1, 2*l+1, rho)
     # Note: NumPy does not have a factorial function, this is a workaround
