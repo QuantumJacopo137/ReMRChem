@@ -5,7 +5,7 @@ from scipy.special import gamma
 from orbital4c import complex_fcn as cf
 
 class orbital2c:
-    """Four components orbital."""
+    """Two components orbital."""
     mra = None
     light_speed = -1.0
     comp_dict = {'alpha': 0, 'beta': 1}
@@ -20,10 +20,10 @@ class orbital2c:
         self.comp_array[self.comp_dict[key]] = val
         
     def __len__(self):
-        return 4
+        return 2
 
     def __str__(self):
-        return ('alpha\n{} beta\n{} Small components\n alpha\n{} beta\n{}'.format(self["alpha"],
+        return ('> ALPHA\n{} BETA\n{}'.format(self["alpha"],
                                   self["beta"]))
     
     def __add__(self, other):
@@ -96,6 +96,8 @@ class orbital2c:
         for comp in self.comp_array:
             comp.real *= factor
             comp.imag *= factor
+
+
 
     def copy_component(self, func, component='alpha'):
         self[component].copy_fcns(func.real, func.imag)
@@ -498,8 +500,13 @@ def calc_energy_Weyl_2c(Psi_L, Psi_R, potential, prec):
 
 def calc_dirac_mu(energy, light_speed):
     val = (light_speed**4-energy**2)/light_speed**2
-    print("calc_dirac_mu", val, energy, light_speed)
+    if val < 0:
+        print("Negative mu squared, val =", val)
+        val = -val
+        print("Using", val, "as mu squared")
+
     mu = np.sqrt(val)
+    print("mu, net_energy, lightspeed", val, energy - light_speed**2, light_speed)
     return mu
 
 def calc_kutzelnigg_mu(energy_sq, light_speed):

@@ -251,6 +251,7 @@ class orbital4c:
     def alpha(self, direction, prec):
         out_orb = orbital4c()
 
+        # in Weyl basis
         alpha_order = np.array([[1, 0, 3, 2],
                                 [1, 0, 3, 2],
                                 [0, 1, 2, 3]])
@@ -287,11 +288,12 @@ class orbital4c:
     def alpha_vector(self, prec):
         return [self.alpha(0, prec), self.alpha(1, prec), self.alpha(2, prec)]
     
-    def ktrs(self, prec):   #Kramers´ Time Reversal Symmetry
+    def ktrs(self, prec = 0.0001):   #Kramers´ Time Reversal Symmetry
         out_orb = orbital4c()
         tmp = self.complex_conj()
         ktrs_order = np.array([1, 0, 3, 2])
-        ktrs_coeff = np.array([-1,  1,  -1,  1])
+        ktrs_coeff = np.array([-1,  1,  -1,  1]) # this is \gamma_3\gamma_1 in Weyl basis it gives a phase shift by exp(i*pi) 
+        
         for idx in range(4):
             coeff = ktrs_coeff[idx]
             comp = ktrs_order[idx]
