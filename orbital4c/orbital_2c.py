@@ -278,7 +278,7 @@ class orbital2c:
     def sigma_vector(self, prec):
         return [self.sigma(0, prec), self.sigma(1, prec), self.sigma(2, prec)]
     
-    def ktrs(self, prec):   #Kramers´ Time Reversal Symmetry
+    def ktrs(self, prec = 0.001):   #Kramers´ Time Reversal Symmetry
         out_orb = orbital2c()
         tmp = self.complex_conj()
         ktrs_order = np.array([1, 0,])
@@ -501,12 +501,11 @@ def calc_energy_Weyl_2c(Psi_L, Psi_R, potential, prec):
 def calc_dirac_mu(energy, light_speed):
     val = (light_speed**4-energy**2)/light_speed**2
     if val < 0:
-        print("Negative mu squared, val =", val)
-        val = -val
-        print("Using", val, "as mu squared")
+        raise ValueError("Negative value under square root in calc_dirac_mu:", val)   
+        
 
     mu = np.sqrt(val)
-    print("mu, net_energy, lightspeed", val, energy - light_speed**2, light_speed)
+    print("-> \mu = ", mu, "| E =",  energy - light_speed**2, "| using c =", light_speed)
     return mu
 
 def calc_kutzelnigg_mu(energy_sq, light_speed):

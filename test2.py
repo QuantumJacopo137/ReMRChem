@@ -33,18 +33,18 @@ import sys
 light_speed = 137.0359895           # default 137.03599913900001
 derivative = "ABGV"                 # possible values: PH, ABGV, BS
 order = 9                           # max order of the polynomials in the MRA
-box = 18                            # size of the box in atomic units (half box length)     
-prec = 1.0e-3                       # precision threshold for the MRA operations
+box = 15                            # size of the box in atomic units (half box length)     
+prec = 1.0e-4                       # precision threshold for the MRA operations
 thr  = 1.0e-3                       # error threshold for SCF convergence
 auto_box = False
 
 readPotential    = True             # bool
-computePotential = False            # bool 
+computePotential = True            # bool 
 savePotential    = True             # bool
 potential = "coulomb_HFYGB"         # possible values: point_charge coulomb_HFYGB homogeneus_charge_sphere gaussian
 
 continue_run     = False            # bool
-readOrbitals     = False            # bool
+readOrbitals     = True            # bool
 saveOrbitals     = True             # bool
 saveGuess        = False
 
@@ -153,26 +153,27 @@ print()
 
 # Use this as a sandbox for testing all the subroutines
 
-L_array = [orb2c.orbital2c(),
-           orb2c.orbital2c(),
-           orb2c.orbital2c(),
-           orb2c.orbital2c()]
-
-R_array = [orb2c.orbital2c(),
-           orb2c.orbital2c(),
-           orb2c.orbital2c(),
-           orb2c.orbital2c()]
 # In case, to generate the L spinors here it is:
 #spinorb_array = fourel.init_4_spinors(position, charge, mra, prec)
 
 # Otherwise, read them from file
 
-readOrbitals = True
+readOrbitals =  False
+
 
 Dirac_array = [orb.orbital4c() for i in range(4)]
 
 
 if not continue_run:
+    L_array = [orb2c.orbital2c(),
+            orb2c.orbital2c(),
+            orb2c.orbital2c(),
+            orb2c.orbital2c()]
+
+    R_array = [orb2c.orbital2c(),
+            orb2c.orbital2c(),
+            orb2c.orbital2c(),
+            orb2c.orbital2c()]
     if (not readOrbitals):
         L_array[0] = sg.make_NR_starting_guess(position, 2.45744, mra, prec,comp=2,  n=2, l=0)
         L_array[1] = L_array[0].ktrs(prec)
@@ -205,7 +206,7 @@ else:
 
 
 
-Dirac_array, Fock_matrix =lazy4el.scf_4el(Dirac_array, V_tree, mra, prec, max_iter=2)
+Dirac_array, Fock_matrix =lazy4el.scf_4el(Dirac_array, V_tree, mra, prec, max_iter=10, auto_save=False, Dampen_alpha= 0.3)
 
 for i in range(4):
     Dirac_array[i].save(f"Last_run_spinor_{i}")
@@ -215,6 +216,8 @@ for i in range(4):
 
 
 
+
+    
 
 
 

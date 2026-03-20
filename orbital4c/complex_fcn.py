@@ -18,8 +18,8 @@ class complex_fcn:
             vp.advanced.copy_func(self.imag, imag)
             
     def squaredNorm(self):
-        re = self.real.squaredNorm()
-        im = self.imag.squaredNorm()
+        re = (self.real).squaredNorm()
+        im = (self.imag).squaredNorm()
         return re + im
     
     def normalize(self):
@@ -266,6 +266,7 @@ def apply_helmholtz(func, mu, light_speed, prec):
     return out_func
 
 def apply_poisson(func, mra, P, prec, thresholdNorm = 0, factor = 1.0):
+    # WARNING: THIS THING AUTO MULTIPLIES BY 4 \pi, BE CAREFUL WITH FACTORS HERE
     out_func = complex_fcn()
     if(func.real.squaredNorm() > thresholdNorm):
         vp.advanced.apply(prec, out_func.real, P, func.real)

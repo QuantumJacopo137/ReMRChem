@@ -12,7 +12,7 @@ import numpy.linalg as LA
 import sys, getopt
 
 
-def scf_4el(spinorb_array, potential, mra, prec, max_iter=10, auto_save = False):
+def scf_4el(spinorb_array, potential, mra, prec, max_iter=10, auto_save = False, Dampen_alpha = 0.5):
     # Initialize the starting guess
     light_speed = spinorb_array[0].light_speed
     c2 = light_speed**2
@@ -25,20 +25,20 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=10, auto_save = False)
     # Compute 2-el terms
     V_Psi_array = J_K_Psi(spinorb_array, spinorb_array, mra, prec, True)
    
+   # add the nuclear potential contribution to V_Psi_array
     print()
     for i in range(4):
         V_Psi_i = orb.apply_potential(-1.0, potential, spinorb_array[i], prec)
-        #print(f"Nuclear potential contribution for spinor {i}: {spinorb_array[i].dot(V_Psi_i).real}")
-        #print(f"One el contribution for spinor {i}: {spinorb_array[i].dot(V_Psi_i).real+ spinorb_array[i].classicT()}")
         V_Psi_array[i] = V_Psi_array[i] + V_Psi_i
     print()
     
     # Compute the F matrix for the initial guess
     F_ij = F_matrix(spinorb_array, V_Psi_array, prec, True)
-   
     print()
-    print("Initial F matrix:")
+    print("----------------- Initial F matrix -----------------")
     print_matrix(F_ij)
+    print("----------------------------------------------------")
+
     print()
     
     for iteration in range(max_iter):
@@ -50,35 +50,33 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=10, auto_save = False)
         #F_ij[3,3] = F_ij[2,2]
 
         # Propagate the spinors using the exact propagator, which is given by the formula:
-        print("\n \t > Propagating the spinors using the exact propagator... \n")
+        print("\n-> Propagating the spinors using the exact propagator... \n")
         spinorb_array_new = exact_propagator(spinorb_array, V_Psi_array, F_ij, prec, False)
 
-        print("\n \t > Balancing the Dirac spinors... \n")
-        #print("\t Before balancing:")
-        #for i in range(4):
-        #    orb.print_norm_debug(spinorb_array_new[i])
+        print("\n-> Balancing the Dirac spinors... \n")
+
+
         spinorb_array_new = balance_Dirac_spinor(spinorb_array_new, V_Psi_array, F_ij, prec, True)
-        #print("\n \t After balancing:")
-        for i in range(4):
-            spinorb_array_new[i] = np.sqrt(0.5) * (spinorb_array_new[i] + spinorb_array[i])
-        
+        # Most of the time this is needed 
+        spinorb_array_new = Dampen_iteration(spinorb_array, spinorb_array_new, Dampen_alpha, prec)
 
 
-        print("\n \t > Orthonormalizing the Dirac spinors... \n")
+        print("\n-> Orthonormalizing the Dirac spinors... \n")
         spinorb_array_new = Dirac_Lowdin_orthonormalization(spinorb_array_new, prec, verbose=True)
         #print("\n \t > After orthonormalization: \n")
-        
-        print("\n \t > Calculating the new V_Psi_array... \n")
-        for i in range(4):
-            V_Psi_array[i].setZero()
+
+        print("\n-> Calculating the new V_Psi_array... \n")
+        #for i in range(4):
+        #    V_Psi_array[i].setZero()
         V_Psi_array = J_K_Psi(spinorb_array_new, spinorb_array_new, mra, prec, verbose=True)
 
         # add the nuclear potential contribution to V_Psi_array
-        for i in range(4):
+        for i in (0,2):
             V_Psi_array[i] = V_Psi_array[i] + orb.apply_potential(-1.0, potential, spinorb_array_new[i], prec)
+            V_Psi_array[i+1] = V_Psi_array[i].ktrs()
         
         # compute the new F matrix
-        print("\n \t > Computing the new F matrix... \n")
+        print("\n-> Computing the new F matrix... \n")
         F_ij = F_matrix(spinorb_array_new, V_Psi_array, prec, verbose = True)
         # print it
         print_matrix(F_ij)
@@ -94,18 +92,17 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=10, auto_save = False)
             spinorb_array[i] = spinorb_array_new[i]
         norm_diff = np.sqrt(norm_diff)
         print()
-        print("--> Norm difference for spinor: ", norm_diff)
+        print("-> Norm difference for spinor: ", norm_diff)
         print()
         print("------------------------------------------------------")
         print(" => Average norm difference per spinor: ", norm_diff/4, " |")
         print("------------------------------------------------------")
-
+        Dampen_alpha = norm_diff
         if norm_diff < prec/10:
             print(f"SCF converged after {iteration} iterations.")
             break
 
     return spinorb_array_new, F_ij
-
 
 
 def print_array_SqNorms(spinor_array):
@@ -114,11 +111,12 @@ def print_array_SqNorms(spinor_array):
     return
 
 
-def Dampen_iteration(old_array, new_array, dampen_coeff = 1.0):
+def Dampen_iteration(old_array, new_array, dampen_coeff = 1.0, prec = 1.0e-5):
     dampen_coeff = max(0.0, min(1.0, dampen_coeff)) # ensure that the dampen coefficient is between 0 and 1
     dampen_coeff = np.sqrt(dampen_coeff) # take the square root of the dampen coefficient to make the damping less aggressive
     for i in range(4):
         new_array[i] = dampen_coeff * new_array[i] + (1-dampen_coeff) * old_array[i]
+        new_array[i].crop(prec/10) # crop the new spinor to remove small values that can cause numerical instability in the next iterations
     return new_array
 
 
@@ -226,14 +224,21 @@ def exact_propagator(spinor_array, V_Psi_array, F_matrix, prec, exact = True):
         # Sum the big term and the sum term, and divide by c^2 to get the new left spinor
         tmp_new_spinor_L = (1.0/c2)*(tmp_new_spinor_L + Big_V_Psi_L)
 
+        # Store the norm of the original spinor before applying the convolution, so that we can compare it with the norm of the new spinor after applying the convolution
+        norm_pre_conv = L_spinor_array[i].norm()
+        
         # Apply the helmholtz convolution to the new left spinor, and then combine it with the right spinor to get the new Dirac spinor
         mu = orb2c.calc_dirac_mu(F_matrix[i,i].real, light_speed)
-        norm_pre_conv = spinor_array[i].norm()
         tmp_new_spinor_L = orb2c.apply_helmholtz(tmp_new_spinor_L, mu, prec)
+        
+        # Now check the new norm adter it
         norm_post_conv = tmp_new_spinor_L.norm()
+        # Find the ratio
         ratio_norm = norm_pre_conv / norm_post_conv
+        
         print(f"Spinor {i}: norm before convolution = {norm_pre_conv:.3e}, norm after convolution = {norm_post_conv:.3e}, ratio = {ratio_norm:.3e}")
-
+        
+        # Last step is to combine them so that the ratio of the norms is preserved, and store the new Dirac spinor in the new_dirac_spinor_array
         new_dirac_spinor_array[i] = Weyl_to_Dirac(ratio_norm * tmp_new_spinor_L, R_spinor_array[i])
 
     new_dirac_spinor_array[1] = new_dirac_spinor_array[0].ktrs()
@@ -241,11 +246,6 @@ def exact_propagator(spinor_array, V_Psi_array, F_matrix, prec, exact = True):
 
     return new_dirac_spinor_array
 
-
-
-            
-    
-    
 
 def Dirac_to_Weyl(dirac_spinor, weyl_L = True):
     # Take the 4-component Dirac spinor and return the 2-component Weyl spinor. If weyl_L is True, return the left-handed Weyl spinor, otherwise return the right-handed Weyl spinor.
@@ -258,6 +258,7 @@ def Dirac_to_Weyl(dirac_spinor, weyl_L = True):
         weyl_spinor["alpha"] = dirac_spinor["Sa"]
         weyl_spinor["beta"] = dirac_spinor["Sb"]
     return weyl_spinor
+
 
 def Weyl_to_Dirac(weyl_spinor_L, weyl_spinor_R):
     # Build a 4-component Dirac spinor from the left-handed and right-handed Weyl spinors. The left-handed Weyl spinor will be the first 2 components of the Dirac spinor, and the right-handed Weyl spinor will be the last 2 components of the Dirac spinor.
@@ -272,7 +273,7 @@ def Weyl_to_Dirac(weyl_spinor_L, weyl_spinor_R):
     return dirac_spinor
 
 
-def balance_Dirac_spinor(spinor_array, V_Psi_array, F_matrix, prec, one_el_balance = False):
+def balance_Dirac_spinor(spinor_array, V_Psi_array, F_ij, prec, one_el_balance = False):
     # this is gonna take the first 2 components of a general spinor and compute the second 2 components using the balance condition. This is gonna be used in the exact propagator to compute the new spinor array after one iteration of the SCF procedure. The balance condition is given by:
     L_spinor_array = [orb2c.orbital2c() for i in range(4)] 
     R_spinor_array = [orb2c.orbital2c() for i in range(4)]
@@ -282,52 +283,50 @@ def balance_Dirac_spinor(spinor_array, V_Psi_array, F_matrix, prec, one_el_balan
         L_spinor_array[i] = Dirac_to_Weyl(spinor_array[i])
         #print(f"Norm of L spinor {i} before balancing: {L_spinor_array[i].norm():.3e}")
     
-    for i in range(4):
-        R_spinor_array[i] = L_spinor_array[i].apply_R(Dirac_to_Weyl(V_Psi_array[i]), F_matrix[i,i], 'BS', prec)
-        #print(f"Norm of R spinor {i} after balancing: {R_spinor_array[i].norm():.3e}")  
+    for i in (0,2):
+        R_spinor_array[i] = L_spinor_array[i].apply_R(Dirac_to_Weyl(V_Psi_array[i]), F_ij[i,i], 'BS', prec)
         if (not one_el_balance):
             for j in range(4):
-                if abs(F_matrix[i,j]) < prec/10:
+                if abs(F_ij[i,j]) < prec/10 or abs(F_ij[i,j]) > 1.0:
                     continue
                 if j != i:
-                    R_spinor_array[i] = R_spinor_array[i] +  (F_matrix[i,j]/c2) * L_spinor_array[j]
+                    print("L spinor ", j,  " has a norm ", L_spinor_array[j].norm(), " and COEFF = ", F_ij[i,j]/c2)
+                    tmp = (F_ij[i,j]/c2) * L_spinor_array[j]
+                    print("norm balance contribution for spinor ", i, " from spinor ", j, ": ", tmp.norm())
+                    R_spinor_array[i] += tmp
 
-       #print(f"Norm of R spinor {i} after adding sum term: {R_spinor_array[i].norm():.3e}")
+
+        R_spinor_array[i+1] = R_spinor_array[i].ktrs()
+
         
-    
     for i in range(4):
         spinor_array[i] = Weyl_to_Dirac(L_spinor_array[i], R_spinor_array[i])
         spinor_array[i].normalize()
 
     return spinor_array
         
-    
-
-
-
 
 def F_matrix(spinor_array, V_Psi_array, prec, verbose = False, shift = 0.0):
     F_matrix = np.zeros((4,4), dtype=complex)
     light_speed = spinor_array[0].light_speed
     c2 = light_speed**2
     
-    print("Starting F matrix calculation...")
-    
     for i in (0,2):
         print()
         if verbose:
-                print(f"Calculating F_ij for i={i}, j={i}...")
+                print(f"Calculating F[{i},{i}]...")
         F_psi_j=  orb.apply_dirac_hamiltonian(spinor_array[i], prec, -shift)
         
         T = spinor_array[i].dot(F_psi_j)
-        print(f"Kinetic relativistic contribution for spinor {i}: {T.real-c2}")
+        print(f"$ T_REL = {T.real-c2}, <T_REL - T_NR> = {T.real - spinor_array[i].classicT() - c2} ")
         L = Dirac_to_Weyl(spinor_array[i])
         R = Dirac_to_Weyl(spinor_array[i], weyl_L=False)
-        print(f" > Mass term contribution for spinor (1/c2) {i}: {(orb2c.dot(L,R)).real}")
-        print(f" > L contribution for spinor {i}: {light_speed * (orb2c.dot(L,L.sigma_p(prec/10))).real}")
-        print(f" > R contribution for spinor {i}: {light_speed * (orb2c.dot(R,R.sigma_p(prec/10))).real}")
-        print(f"Kinetic classical contribution for spinor {i}: {spinor_array[i].classicT()}")
-        print(f"Potential contribution for spinor {i}: {spinor_array[i].dot(V_Psi_array[i]).real:.6e}")
+        print(f" -> < L | R > / c2   = { 2 * (orb2c.dot(L,R)).real}")
+        print(f" -> < L | c\pi | L > = {light_speed * (orb2c.dot(L,L.sigma_p(prec))).real}")
+        print(f" -> < R | c\pi | R > = {light_speed * (orb2c.dot(R,R.sigma_p(prec))).real}")
+        print(f"$ ")
+        print()
+        print(f"$ < V_tot > = {spinor_array[i].dot(V_Psi_array[i]).real}")
         
         F_psi_j += V_Psi_array[i]
         F_matrix[i,i] = spinor_array[i].dot(F_psi_j)
@@ -336,7 +335,7 @@ def F_matrix(spinor_array, V_Psi_array, prec, verbose = False, shift = 0.0):
 
 
     if verbose:
-        print(f"Calculating F_ij for i={0}, j={2}...")
+        print(f"Calculating F[0,2]")
     F_psi_j=  orb.apply_dirac_hamiltonian(spinor_array[2], prec/10, -shift) 
     
     T = spinor_array[0].dot(F_psi_j)
@@ -347,7 +346,7 @@ def F_matrix(spinor_array, V_Psi_array, prec, verbose = False, shift = 0.0):
     F_matrix[1,3] = np.conj(F_matrix[0,2]) 
     F_matrix[3,1] = F_matrix[0,2]
     if verbose:
-        print(f"Calculating F_ij for i={0}, j={3}...")
+        print(f"Calculating F[0,3]")
     
     F_psi_j= V_Psi_array[3] + orb.apply_dirac_hamiltonian(spinor_array[3], prec, -shift)
     normf = spinor_array[0].dot(spinor_array[3])
@@ -363,7 +362,9 @@ def F_matrix(spinor_array, V_Psi_array, prec, verbose = False, shift = 0.0):
 
     return F_matrix
 
+
 def J_K_Psi(Psi_array, spinor_array, mra, prec, verbose = False):
+    # Returns J - K built with spinor_array and acting on Psi_array.
     # Psi_array is the one it acts upon
     # spinor_array is the one that generates the density for the J and K operators
     if (len(Psi_array) != len(spinor_array)):
@@ -388,11 +389,13 @@ def J_K_Psi(Psi_array, spinor_array, mra, prec, verbose = False):
             print(f"< J > contribution for spinor {i}: {spinor_array[i].dot(J_PSI_ARRAY[i]).real}")
             print(f"< K > contribution for spinor {i}: {spinor_array[i].dot(K_PSI_ARRAY[i]).real}\n")
         J_m_K_PSI_ARRAY[i] = J_PSI_ARRAY[i] - K_PSI_ARRAY[i]
-
+        J_m_K_PSI_ARRAY[i].crop(prec/10)
         J_m_K_PSI_ARRAY[i+1] = J_m_K_PSI_ARRAY[i].ktrs()
 
 
+
     return J_m_K_PSI_ARRAY
+
 
 def J_Psi(Psi_array, spinor_array, mra, prec):
     # Psi_array is the one it acts upon
@@ -424,7 +427,8 @@ def J_Psi(Psi_array, spinor_array, mra, prec):
 
     return J_PSI_ARRAY
 
-def K_Psi(Psi_array, spinor_array, mra, prec):
+
+def K_Psi(Psi_array, spinor_array, mra, prec, ignore_thr = 0.0):
     # Psi_array is the one it acts upon
     # spinor_array is the one that generates the density for the K operator
 
@@ -434,18 +438,25 @@ def K_Psi(Psi_array, spinor_array, mra, prec):
     if (len(Psi_array) != 4):
         raise ValueError("Psi_array and spinor_array must have length 4.")
     
+
+    
     P = vp.PoissonOperator(mra, prec/10)        
 
     K_PSI_ARRAY = [orb.orbital4c() for i in range(4)]
+    
     for i in (0,2):
         # Apply poisson - remember that it is automultiplied by 4\pi
-        contr_0 = cf.apply_poisson(spinor_array[0].overlap_density(Psi_array[i], prec), mra, P, prec) 
-        contr_2 = cf.apply_poisson(spinor_array[2].overlap_density(Psi_array[i], prec), mra, P, prec)
-        
-        # Add all the contributions to get the K_PSI_ARRAY
-        K_PSI_ARRAY[i] = orb.apply_complex_potential(1.0, contr_0, spinor_array[0], prec) 
-        K_PSI_ARRAY[i] += orb.apply_complex_potential(1.0, contr_2, spinor_array[2], prec) 
 
+        overlap_0i = spinor_array[0].overlap_density(Psi_array[i], prec/10)
+        if (np.sqrt(overlap_0i.squaredNorm()) > ignore_thr):
+            contr_0 = cf.apply_poisson(overlap_0i, mra, P, prec/10) 
+            K_PSI_ARRAY[i] += orb.apply_complex_potential(1.0, contr_0, spinor_array[0], prec) 
+        overlap_2i = spinor_array[2].overlap_density(Psi_array[i], prec/10)
+        if (np.sqrt(overlap_2i.squaredNorm()) > ignore_thr):
+            contr_2 = cf.apply_poisson(overlap_2i, mra, P, prec/10)
+            K_PSI_ARRAY[i] += orb.apply_complex_potential(1.0, contr_2, spinor_array[2], prec) 
+
+        K_PSI_ARRAY[i].crop(prec/10)
         # Define the next as the ktrs of the current one
         K_PSI_ARRAY[i+1] = K_PSI_ARRAY[i].ktrs()
 
