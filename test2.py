@@ -39,7 +39,7 @@ thr  = 1.0e-3                       # error threshold for SCF convergence
 auto_box = False
 
 readPotential    = True             # bool
-computePotential = True            # bool 
+computePotential = False            # bool 
 savePotential    = True             # bool
 potential = "coulomb_HFYGB"         # possible values: point_charge coulomb_HFYGB homogeneus_charge_sphere gaussian
 
@@ -158,7 +158,7 @@ print()
 
 # Otherwise, read them from file
 
-readOrbitals =  False
+
 
 
 Dirac_array = [orb.orbital4c() for i in range(4)]

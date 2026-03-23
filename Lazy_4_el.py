@@ -21,6 +21,9 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=10, auto_save = False,
 
     # allocate some memory for these
     spinorb_array_new = [orb.orbital4c() for i in range(4)]
+
+    # Make sure the initial guess is orthonormalized
+    spinorb_array = Dirac_Lowdin_orthonormalization(spinorb_array, prec, verbose=True)
     
     # Compute 2-el terms
     V_Psi_array = J_K_Psi(spinorb_array, spinorb_array, mra, prec, True)
@@ -62,7 +65,7 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=10, auto_save = False,
 
 
         print("\n-> Orthonormalizing the Dirac spinors... \n")
-        spinorb_array_new = Dirac_Lowdin_orthonormalization(spinorb_array_new, prec, verbose=True)
+        spinorb_array_new = Dirac_Lowdin_orthonormalization(spinorb_array_new, prec, verbose=False)
         #print("\n \t > After orthonormalization: \n")
 
         print("\n-> Calculating the new V_Psi_array... \n")
@@ -86,7 +89,7 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=10, auto_save = False,
 
         for i in range(4):
             norm_diff_i = (spinorb_array_new[i] - spinorb_array[i]).squaredNorm()
-            print(f"Norm of the difference between the new and old spinor {i}: {norm_diff_i}")
+            print(f"Norm of the difference between the new and old spinor {i}: {np.sqrt(norm_diff_i)}")
             norm_diff += norm_diff_i
             spinorb_array[i].setZero()
             spinorb_array[i] = spinorb_array_new[i]
@@ -120,16 +123,32 @@ def Dampen_iteration(old_array, new_array, dampen_coeff = 1.0, prec = 1.0e-5):
     return new_array
 
 
-def print_matrix(matrix, shift =0.0):
-    for i in range(matrix.shape[0]):
-        row_strs = []
-        for x in matrix[i, :]:
-            re = 0.0 if np.isclose(x.real, 0.0) else x.real
-            im = 0.0 if np.isclose(x.imag, 0.0) else x.imag
-            row_strs.append(f"{re+shift:.4g}{' + ' if im >= 0 else '-'}j{abs(im):.4g}")
-        print(f"[{',\t'.join(row_strs)}]" )
+def print_matrix(matrix, zero_thr = 1.0e-5):
+    
+    dim_i = matrix.shape[0]
+    dim_j = matrix.shape[1]
 
+    real_M = np.zeros((dim_i, dim_j))
+    imag_M = np.zeros((dim_i, dim_j))
+
+
+    for i in range(dim_i):
+         for j in range(dim_j):
+            real_M[i,j] = matrix[i,j].real
+            imag_M[i,j] = matrix[i,j].imag
+
+    for i in range(dim_i):
+        for j in range(dim_j):
+            re = real_M[i,j]
+            im = imag_M[i,j]
+            if re >= 0:
+                print(f"+{re:05.3e}{' + ' if im >= 0 else ' - '}{abs(im):05.3e}j\t", end = "\t")
+            else:
+                print(f"{re:05.3e}{' + ' if im >= 0 else ' - '}{abs(im):05.3e}j\t", end = "\t")
+        print()
     return
+      
+
 
 
 def Dirac_Lowdin_orthonormalization(spinor_array, prec, verbose = False):
@@ -219,6 +238,7 @@ def exact_propagator(spinor_array, V_Psi_array, F_matrix, prec, exact = True):
         else:
             for j in range(4):
                 if j != i or abs(F_matrix[i,j]) > prec/10:
+                    tmp_new_spinor_L.setZero()
                     tmp_new_spinor_L +=  -F_matrix[i,j] * Dirac_to_Weyl(V_Psi_array[j], weyl_L=False)
 
         # Sum the big term and the sum term, and divide by c^2 to get the new left spinor
@@ -318,12 +338,12 @@ def F_matrix(spinor_array, V_Psi_array, prec, verbose = False, shift = 0.0):
         F_psi_j=  orb.apply_dirac_hamiltonian(spinor_array[i], prec, -shift)
         
         T = spinor_array[i].dot(F_psi_j)
-        print(f"$ T_REL = {T.real-c2}, <T_REL - T_NR> = {T.real - spinor_array[i].classicT() - c2} ")
+        print(f"$ T_REL = {T.real-c2},       <T_REL - T_NR> = {T.real - spinor_array[i].classicT() - c2} ")
         L = Dirac_to_Weyl(spinor_array[i])
         R = Dirac_to_Weyl(spinor_array[i], weyl_L=False)
-        print(f" -> < L | R > / c2   = { 2 * (orb2c.dot(L,R)).real}")
-        print(f" -> < L | c\pi | L > = {light_speed * (orb2c.dot(L,L.sigma_p(prec))).real}")
-        print(f" -> < R | c\pi | R > = {light_speed * (orb2c.dot(R,R.sigma_p(prec))).real}")
+        print(f" -> < L | R > 2 *c2 - c2    = { (2 * (orb2c.dot(L,R)).real - 1) * c2}")
+        print(f" -> < L | c\pi | L >        = {light_speed * (orb2c.dot(L,L.sigma_p(prec))).real}")
+        print(f" -> < R | c\pi | R >        = {light_speed * (orb2c.dot(R,R.sigma_p(prec))).real}")
         print(f"$ ")
         print()
         print(f"$ < V_tot > = {spinor_array[i].dot(V_Psi_array[i]).real}")
