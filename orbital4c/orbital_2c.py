@@ -498,14 +498,15 @@ def calc_energy_Weyl_2c(Psi_L, Psi_R, potential, prec):
 #def overlap_density_balanced(spinor_array, V_psi_array, pi_psi_array, prec):
 
 
-def calc_dirac_mu(energy, light_speed):
+def calc_dirac_mu(energy, light_speed, verbose = False):
     val = (light_speed**4-energy**2)/light_speed**2
     if val < 0:
         raise ValueError("Negative value under square root in calc_dirac_mu:", val)   
         
 
     mu = np.sqrt(val)
-    print("-> \mu = ", mu, "| E =",  energy - light_speed**2, "| using c =", light_speed)
+    if verbose:
+        print("-> \mu = ", mu, "| E =",  energy - light_speed**2, "| using c =", light_speed)
     return mu
 
 def calc_kutzelnigg_mu(energy_sq, light_speed):

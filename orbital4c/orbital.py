@@ -293,7 +293,6 @@ class orbital4c:
         tmp = self.complex_conj()
         ktrs_order = np.array([1, 0, 3, 2])
         ktrs_coeff = np.array([-1,  1,  -1,  1]) # this is \gamma_3\gamma_1 in Weyl basis it gives a phase shift by exp(i*pi) 
-        
         for idx in range(4):
             coeff = ktrs_coeff[idx]
             comp = ktrs_order[idx]
