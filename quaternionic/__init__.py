@@ -12,7 +12,6 @@ Classes:
 
 from .quat_function import QuatFunction, quat_add, quat_multiply, quat_conjugate_multiply
 from .quat_orbital import (
-    CompQuatOrbital,
     QuatOrbital,
     ComponentView,
     apply_dirac_hamiltonian,
