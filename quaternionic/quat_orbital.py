@@ -21,570 +21,6 @@ from typing import Optional, List, Union
 from .quat_function import QuatFunction as QuatFunction
 
 
-# =============================================================================
-# CompQuatOrbital: Complex Quaternionic Orbital (4-component spinor equivalent)
-# =============================================================================
-
-class CompQuatOrbital:
-    """
-    Complex quaternionic orbital for 4-component relativistic spinors.
-
-    Represents a Dirac spinor as a single complex quaternionic function:
-        q(x) = q0(x) + q1(x)*i + q2(x)*j + q3(x)*k
-
-    where each component qn is a complex function (real + imaginary parts).
-
-    This provides a compact representation of 4-component spinors:
-        - q0 encodes the Large-alpha component
-        - q1 encodes the Large-beta component
-        - q2 encodes the Small-alpha component
-        - q3 encodes the Small-beta component
-
-    Attributes:
-        quat: Complex quaternionic function containing all 4 spinor components
-        mra: Shared MultiResolutionAnalysis object
-        light_speed: Speed of light in atomic units
-    """
-
-    mra = None  # Shared MultiResolutionAnalysis object
-    light_speed = -1.0  # Speed of light (atomic units, -1 = use default)
-
-    # Component mapping: quaternion component -> spinor component
-    comp_dict = {'scalar': 0, 'i': 1, 'j': 2, 'k': 3}
-
-    def __init__(self):
-        """Initialize a complex quaternionic orbital."""
-        self.quat = QuatFunction(complex_valued=True)
-
-    def __getitem__(self, key: str) -> 'ComponentView':
-        """
-        Access a spinor component as a complex function view.
-
-        Args:
-            key: Component name ('scalar', 'i', 'j', 'k')
-
-        Returns:
-            ComponentView object providing access to the complex function
-        """
-        return ComponentView(self.quat, self.comp_dict[key])
-
-    def __len__(self):
-        return 4
-
-    def __str__(self):
-        return (f"CompQuatOrbital (4-component complex spinor):\n"
-                f"  (scalar): {self.quat['scalar']}\n"
-                f"  (i):      {self.quat['i']}\n"
-                f"  (j):      {self.quat['j']}\n"
-                f"  (k):      {self.quat['k']}")
-
-    def setZero(self):
-        """Set all components to zero."""
-        self.quat.setZero()
-
-    def copy(self, other: 'CompQuatOrbital'):
-        """Copy all components from another orbital."""
-        self.quat.copy(other.quat)
-
-    # =========================================================================
-    # Norm operations
-    # =========================================================================
-
-    def squaredNorm(self) -> float:
-        """Compute the squared L2 norm: sum of all 4 component norms."""
-        return self.quat.squaredNorm()
-
-    def norm(self) -> float:
-        """Compute the L2 norm."""
-        return np.sqrt(self.squaredNorm())
-
-    def normalize(self):
-        """Normalize the orbital to unit norm."""
-        norm = self.norm()
-        if norm > 1e-14:
-            self.quat.rescale(1.0 / norm)
-
-    def rescale(self, factor: Union[float, complex]):
-        """Rescale all components by a factor."""
-        self.quat.rescale(factor)
-
-    def squaredLargeNorm(self) -> float:
-        """Compute squared norm of large components (La, Lb)."""
-        return (self.quat['scalar'].squaredNorm() +
-                self.quat['i'].squaredNorm())
-
-    def squaredSmallNorm(self) -> float:
-        """Compute squared norm of small components (Sa, Sb)."""
-        return (self.quat['j'].squaredNorm() +
-                self.quat['k'].squaredNorm())
-
-    # =========================================================================
-    # Arithmetic operations
-    # =========================================================================
-
-    def __add__(self, other: 'CompQuatOrbital') -> 'CompQuatOrbital':
-        """Add two complex quaternionic orbitals."""
-        if not isinstance(other, CompQuatOrbital):
-            return NotImplemented
-        output = CompQuatOrbital()
-        output.quat = self.quat + other.quat
-        return output
-
-    def __sub__(self, other: 'CompQuatOrbital') -> 'CompQuatOrbital':
-        """Subtract two complex quaternionic orbitals."""
-        if not isinstance(other, CompQuatOrbital):
-            return NotImplemented
-        output = CompQuatOrbital()
-        output.quat = self.quat - other.quat
-        return output
-
-    def __neg__(self) -> 'CompQuatOrbital':
-        """Negate the orbital."""
-        output = CompQuatOrbital()
-        output.quat = -self.quat
-        return output
-
-    def __rmul__(self, scalar: Union[float, complex]) -> 'CompQuatOrbital':
-        """Multiply by a scalar from the left."""
-        return self.__mul__(scalar)
-
-    def __mul__(self, other: Union['CompQuatOrbital', float, complex]) -> 'CompQuatOrbital':
-        """
-        Multiply by a scalar or another orbital.
-
-        For orbital * orbital, performs component-wise multiplication.
-        """
-        output = CompQuatOrbital()
-
-        if isinstance(other, (int, float, complex)):
-            output.quat = other * self.quat
-            return output
-
-        if isinstance(other, CompQuatOrbital):
-            # Component-wise quaternion multiplication
-            output.quat = self.quat * other.quat
-            return output
-
-        return NotImplemented
-
-    # =========================================================================
-    # Component operations
-    # =========================================================================
-
-    def copy_component(self, func, component: str = 'La'):
-        """
-        Copy a complex function into a spinor component.
-
-        Args:
-            func: Source function (complex_fcn or compatible)
-            component: Target component name
-        """
-        idx = self.comp_dict[component]
-        if idx == 0:
-            self.quat['scalar'].copy_fcns(func.real, func.imag)
-        elif idx == 1:
-            self.quat['i'].copy_fcns(func.real, func.imag)
-        elif idx == 2:
-            self.quat['j'].copy_fcns(func.real, func.imag)
-        elif idx == 3:
-            self.quat['k'].copy_fcns(func.real, func.imag)
-
-    def copy_components(self, La=None, Lb=None, Sa=None, Sb=None):
-        """Copy multiple components at once."""
-        if La is not None:
-            self.copy_component(La, 'La')
-        if Lb is not None:
-            self.copy_component(Lb, 'Lb')
-        if Sa is not None:
-            self.copy_component(Sa, 'Sa')
-        if Sb is not None:
-            self.copy_component(Sb, 'Sb')
-
-    def init_small_components(self, prec: float):
-        """
-        Initialize small components from large components using kinetic balance.
-
-        For the Dirac equation: psi_S = (sigma·p) / (2mc) * psi_L
-
-        In quaternionic form, this becomes:
-            q_small = -i/(2c) * (sigma·grad) q_large
-
-        where q_large = q0 + q1*i and q_small = q2 + q3*i.
-        """
-        c = CompQuatOrbital.light_speed
-        if c < 0:
-            print("Warning: light_speed not set. Using default value.")
-            c = 137.035999084
-
-        from orbital4c.complex_fcn import complex_fcn
-
-        # Get large component gradients
-        q0 = self.quat['scalar']  # La
-        q1 = self.quat['i']       # Lb
-
-        grad_q0 = q0.gradient()
-        grad_q1 = q1.gradient()
-
-        # sigma·p acting on [q0, q1]:
-        # (sigma·p) [q0] = [dz*q0 + (dx-idy)*q1] = [dz*q0 + dx*q1 - i*dy*q1]
-        # (sigma·p) [q1] = [(dx+idy)*q0 - dz*q1] = [dx*q0 + i*dy*q0 - dz*q1]
-
-        # Sa (q2) = -i/(2c) * (dz*q0 + dx*q1 - i*dy*q1)
-        # Sb (q3) = -i/(2c) * (dx*q0 + i*dy*q0 - dz*q1)
-
-        factor = -1.0 / (2 * c)
-
-        # Compute Sa component (stored in quat['j'])
-        sa_result = complex_fcn()
-
-        # Real part of Sa: factor * (dz*q0.imag + dx*q1.imag + dy*q1.real)
-        # Imag part of Sa: factor * (dz*q0.real + dx*q1.real - dy*q1.imag)
-
-        temp_real = vp.FunctionTree(self.mra)
-        temp_imag = vp.FunctionTree(self.mra)
-        temp_real.setZero()
-        temp_imag.setZero()
-
-        add_terms_r = []
-        add_terms_i = []
-
-        # dz * q0
-        if grad_q0[2].real.squaredNorm() > 0:
-            add_terms_i.append((factor, grad_q0[2].real))
-        if grad_q0[2].imag.squaredNorm() > 0:
-            add_terms_r.append((factor, grad_q0[2].imag))
-
-        # dx * q1
-        if grad_q1[0].real.squaredNorm() > 0:
-            add_terms_i.append((factor, grad_q1[0].real))
-        if grad_q1[0].imag.squaredNorm() > 0:
-            add_terms_r.append((factor, grad_q1[0].imag))
-
-        # dy * q1 (note: -i*dy*q1 contributes +dy*q1.imag to real, -dy*q1.real to imag)
-        if grad_q1[1].imag.squaredNorm() > 0:
-            add_terms_r.append((factor, grad_q1[1].imag))
-        if grad_q1[1].real.squaredNorm() > 0:
-            add_terms_i.append((-factor, grad_q1[1].real))
-
-        if add_terms_r:
-            vp.advanced.add(prec, temp_real, add_terms_r)
-        if add_terms_i:
-            vp.advanced.add(prec, temp_imag, add_terms_i)
-
-        sa_result.real = temp_real
-        sa_result.imag = temp_imag
-        self.quat['j'].copy_fcns(sa_result.real, sa_result.imag)
-
-        # Compute Sb component (stored in quat['k'])
-        sb_result = complex_fcn()
-
-        temp_real = vp.FunctionTree(self.mra)
-        temp_imag = vp.FunctionTree(self.mra)
-        temp_real.setZero()
-        temp_imag.setZero()
-
-        add_terms_r = []
-        add_terms_i = []
-
-        # dx * q0
-        if grad_q0[0].real.squaredNorm() > 0:
-            add_terms_i.append((factor, grad_q0[0].real))
-        if grad_q0[0].imag.squaredNorm() > 0:
-            add_terms_r.append((factor, grad_q0[0].imag))
-
-        # dy * q0 (i*dy*q0 contributes -dy*q0.imag to real, +dy*q0.real to imag)
-        if grad_q0[1].imag.squaredNorm() > 0:
-            add_terms_r.append((-factor, grad_q0[1].imag))
-        if grad_q0[1].real.squaredNorm() > 0:
-            add_terms_i.append((factor, grad_q0[1].real))
-
-        # -dz * q1
-        if grad_q1[2].real.squaredNorm() > 0:
-            add_terms_i.append((-factor, grad_q1[2].real))
-        if grad_q1[2].imag.squaredNorm() > 0:
-            add_terms_r.append((-factor, grad_q1[2].imag))
-
-        if add_terms_r:
-            vp.advanced.add(prec, temp_real, add_terms_r)
-        if add_terms_i:
-            vp.advanced.add(prec, temp_imag, add_terms_i)
-
-        sb_result.real = temp_real
-        sb_result.imag = temp_imag
-        self.quat['k'].copy_fcns(sb_result.real, sb_result.imag)
-
-    # =========================================================================
-    # Differential operators
-    # =========================================================================
-
-    def gradient(self, der: str = 'ABGV') -> List['CompQuatOrbital']:
-        """
-        Compute the gradient of the orbital.
-
-        Returns a list of 3 CompQuatOrbitals representing [d/dx, d/dy, d/dz].
-        """
-        result = []
-        for d in range(3):
-            grad_orb = CompQuatOrbital()
-            grad_orb.quat = self.quat.derivative(d, der)
-            result.append(grad_orb)
-        return result
-
-    def derivative(self, direction: int = 0, der: str = 'ABGV') -> 'CompQuatOrbital':
-        """Compute partial derivative with respect to a coordinate."""
-        output = CompQuatOrbital()
-        output.quat = self.quat.derivative(direction, der)
-        return output
-
-    def complex_conj(self) -> 'CompQuatOrbital':
-        """Compute the complex conjugate of the orbital."""
-        output = CompQuatOrbital()
-        output.quat = self.quat.complex_conjugate()
-        return output
-
-    # =========================================================================
-    # Density and overlap operations
-    # =========================================================================
-
-    def density(self, prec: float) -> vp.FunctionTree:
-        """
-        Compute the electron density: rho = |psi|^2 = sum_i |psi_i|^2
-
-        Returns a real-valued FunctionTree.
-        """
-        density = vp.FunctionTree(self.mra)
-        density.setZero()
-
-        add_vec = []
-        for comp_name in ['La', 'Lb', 'Sa', 'Sb']:
-            comp = self[comp_name]
-            temp = comp.density(prec)
-            if temp.squaredNorm() > 0:
-                add_vec.append((1.0, temp))
-
-        if add_vec:
-            vp.advanced.add(prec, density, add_vec)
-
-        return density
-
-    def overlap_density(self, other: 'CompQuatOrbital', prec: float) -> vp.FunctionTree:
-        """
-        Compute the overlap density: rho_ij = psi_i^dagger * psi_j
-
-        Returns a real-valued FunctionTree.
-        """
-        density = vp.FunctionTree(self.mra)
-        density.setZero()
-
-        add_vec = []
-        for comp_name in ['La', 'Lb', 'Sa', 'Sb']:
-            psi_i = self[comp_name]
-            psi_j = other[comp_name]
-            temp = psi_i.complex_conj() * psi_j
-            temp_crop = temp.density(prec)
-            if temp_crop.squaredNorm() > 0:
-                add_vec.append((1.0, temp_crop))
-
-        if add_vec:
-            vp.advanced.add(prec, density, add_vec)
-
-        return density
-
-    # =========================================================================
-    # Dirac matrix operations
-    # =========================================================================
-
-    # def alpha(self, direction: int, prec: float) -> 'CompQuatOrbital':
-    #     """
-    #     Apply the alpha (Dirac) matrix in a given direction.
-
-    #     In the quaternionic representation, alpha matrices act as:
-    #     - alpha_x: swaps (La,Sb) and (Lb,Sa)
-    #     - alpha_y: swaps with imaginary phase factors
-    #     - alpha_z: swaps (La,Sa) and (Lb,-Sb)
-    #     """
-    #     output = CompQuatOrbital()
-
-    #     q = self.quat.components
-
-    #     if direction == 0:  # alpha_x
-    #         # alpha_x = [[0,0,0,1], [0,0,1,0], [0,1,0,0], [1,0,0,0]]
-    #         # La -> Sb, Lb -> Sa, Sa -> Lb, Sb -> La
-    #         output.quat['scalar'] = q[3]  # La_new = Sb
-    #         output.quat['i'] = q[2]       # Lb_new = Sa
-    #         output.quat['j'] = q[1]       # Sa_new = Lb
-    #         output.quat['k'] = q[0]       # Sb_new = La
-
-    #     elif direction == 1:  # alpha_y
-    #         # alpha_y = [[0,0,0,-i], [0,0,i,0], [0,-i,0,0], [i,0,0,0]]
-    #         # La -> -i*Sb, Lb -> i*Sa, Sa -> -i*Lb, Sb -> i*La
-    #         output.quat['scalar'] = -1j * q[3]
-    #         output.quat['i'] = 1j * q[2]
-    #         output.quat['j'] = -1j * q[1]
-    #         output.quat['k'] = 1j * q[0]
-
-    #     elif direction == 2:  # alpha_z
-    #         # alpha_z = [[0,0,1,0], [0,0,0,-1], [1,0,0,0], [0,-1,0,0]]
-    #         # La -> Sa, Lb -> -Sb, Sa -> La, Sb -> -Lb
-    #         output.quat['scalar'] = q[2]
-    #         output.quat['i'] = -q[3]
-    #         output.quat['j'] = q[0]
-    #         output.quat['k'] = -q[1]
-
-    #     output.quat.crop(prec)
-    #     return output
-
-    # def alpha_p(self, prec: float, der: str = "ABGV") -> 'CompQuatOrbital':
-    #     """
-    #     Apply the alpha·p operator: -i * alpha · gradient
-
-    #     This is the kinetic term in the Dirac Hamiltonian.
-    #     """
-    #     grad = self.gradient(der)
-
-    #     # alpha·p = -i * (alpha_x * d/dx + alpha_y * d/dy + alpha_z * d/dz)
-    #     result = CompQuatOrbital()
-
-    #     for d in range(3):
-    #         alpha_d = grad[d].alpha(d, prec)
-    #         result = result + (-1j) * alpha_d
-
-    #     result.quat.crop(prec)
-    #     return result
-
-    # def beta(self, shift: float = 0.0) -> 'CompQuatOrbital':
-    #     """
-    #     Apply the beta matrix (with optional energy shift).
-
-    #     Beta = diag(1, 1, -1, -1) * c^2 + shift
-    #     In quaternionic form: large components get +c^2, small get -c^2
-    #     """
-    #     output = CompQuatOrbital()
-
-    #     c = CompQuatOrbital.light_speed
-    #     if c < 0:
-    #         c = 137.035999084
-
-    #     c2 = c * c
-
-    #     # Large components (La, Lb) -> +c^2 + shift
-    #     output.quat['scalar'] = (c2 + shift) * self.quat['scalar']
-    #     output.quat['i'] = (c2 + shift) * self.quat['i']
-
-    #     # Small components (Sa, Sb) -> -c^2 + shift
-    #     output.quat['j'] = (-c2 + shift) * self.quat['j']
-    #     output.quat['k'] = (-c2 + shift) * self.quat['k']
-
-    #     return output
-
-    # def beta2(self) -> 'CompQuatOrbital':
-    #     """Apply beta matrix without c^2 factor (just sign structure)."""
-    #     output = CompQuatOrbital()
-
-    #     # Large components: +1, Small components: -1
-    #     output.quat['scalar'] = self.quat['scalar']
-    #     output.quat['i'] = self.quat['i']
-    #     output.quat['j'] = -self.quat['j']
-    #     output.quat['k'] = -self.quat['k']
-
-    #     return output
-
-    # =========================================================================
-    # Kramers' Time-Reversal Symmetry
-    # =========================================================================
-
-    def ktrs(self, prec: float) -> 'CompQuatOrbital':
-        """
-        Apply Kramers' Time-Reversal Symmetry operation.
-
-        For a 4-component spinor psi = [La, Lb, Sa, Sb]:
-        T psi = [-Lb*, La*, -Sb*, Sa*]
-
-        In quaternionic form:
-        q' = -q1* + q0* * i - q3* * j + q2* * k
-        """
-        output = CompQuatOrbital()
-
-        # Complex conjugate of all components
-        q_conj = self.quat.complex_conjugate()
-
-        # Apply KTRS: [-Lb*, La*, -Sb*, Sa*]
-        output.quat['scalar'] = -q_conj['i']  # -Lb*
-        output.quat['i'] = q_conj['scalar']   # La*
-        output.quat['j'] = -q_conj['k']       # -Sb*
-        output.quat['k'] = q_conj['j']        # Sa*
-
-        output.quat.crop(prec)
-        return output
-
-    # =========================================================================
-    # Inner product
-    # =========================================================================
-
-    def dot(self, other: 'CompQuatOrbital') -> complex:
-        """
-        Compute the inner product: <psi | phi> = sum_i <psi_i | phi_i>
-
-        Returns a complex number.
-        """
-        result = 0j
-        for comp_name in ['La', 'Lb', 'Sa', 'Sb']:
-            psi_i = self[comp_name]
-            phi_i = other[comp_name]
-            result += psi_i.dot(phi_i)
-        return result
-
-    # =========================================================================
-    # Crop and precision operations
-    # =========================================================================
-
-    def crop(self, prec: float):
-        """Crop all components to the given precision."""
-        self.quat.crop(prec)
-
-    def cropLargeSmall(self, prec: float):
-        """Crop large and small components with different precisions."""
-        largeNorm = np.sqrt(self.squaredLargeNorm())
-        smallNorm = np.sqrt(self.squaredSmallNorm())
-
-        precLarge = prec * largeNorm / 10
-        precSmall = prec * smallNorm / 10
-
-        self.quat['scalar'].crop(precLarge, True)
-        self.quat['i'].crop(precLarge, True)
-        self.quat['j'].crop(precSmall, True)
-        self.quat['k'].crop(precSmall, True)
-
-    # =========================================================================
-    # Save/Load operations
-    # =========================================================================
-
-    def save(self, name: str):
-        """Save orbital to disk."""
-        self.quat.save(f"{name}_quat")
-
-    def load(self, name: str):
-        """Load orbital from disk."""
-        self.quat.load(f"{name}_quat")
-
-    # =========================================================================
-    # Pointwise evaluation
-    # =========================================================================
-
-    def __call__(self, position: np.ndarray) -> np.ndarray:
-        """
-        Evaluate the orbital at a position.
-
-        Returns: numpy array [La, Lb, Sa, Sb] as complex values
-        """
-        vals = self.quat(position)
-        return np.array([vals[0], vals[1], vals[2], vals[3]])
-
-
-# =============================================================================
-# ComponentView: View into a quaternionic component as a complex function
-# =============================================================================
-
 class ComponentView:
     """
     Provides a complex function view into a quaternionic component.
@@ -1083,6 +519,7 @@ class QuatOrbital:
 
 
         return result
+    
 
 
 
@@ -1115,52 +552,45 @@ def apply_dirac_hamiltonian(orbital: QuatOrbital, prec: float, der: str = 'ABGV'
 def apply_potential(factor: float, potential: vp.FunctionTree,
                     orbital: QuatOrbital, prec: float) -> QuatOrbital:
     """
-    Apply a scalar potential to a complex quaternionic orbital.
-
-    Args:
-        factor: Multiplicative factor
-        potential: Potential as a FunctionTree
-        orbital: Input orbital
-        prec: Precision
-
-    Returns:
-        V * psi
-    """
-
-    output = QuatOrbital()
-    for i in range(2):
-        comp = orbital[i]
-        result = comp.real_function_times(potential)
-        output[i] = factor * result
-    return output
-
-
-def apply_helmholtz(orbital:QuatOrbital, mu: float,
-                    prec: float) -> QuatOrbital:
-    """
-    Apply the Helmholtz operator to an orbital.
-
-    Args:
-        orbital: Input orbital
-        mu: Helmholtz parameter
-        prec: Precision
-
-    Returns:
-        (-nabla^2 + mu^2)^{-1} psi
+    Apply scalar potential with zero-guards on all components.
+    Mirrors orbital4c.apply_potential pattern exactly.
     """
     output = QuatOrbital()
     for i in range(2):
-        comp = orbital[i]
-        # Apply Helmoltz quat
-        output[i] = comp.apply_helmoltz(mu, prec)
-        output[i] *= -1.0/(2*np.pi)
-        
+        for j in range(4):
+            func_in  = orbital.components[i]._components[j]
+            func_out = output.components[i]._components[j]
+            if func_in.squaredNorm() > 0:                  # ← GUARD
+                vp.advanced.multiply(prec, func_out, factor, potential, func_in)
     return output
 
 
-def add_vector(orbital_array: List[CompQuatOrbital],
+def apply_helmholtz(orbital: QuatOrbital, mu: float, prec: float) -> QuatOrbital:
+    """
+    Apply the Helmholtz operator to a QuatOrbital.
+
+    CRITICAL OPTIMIZATION: Constructs HelmholtzOperator ONCE (expensive!)
+    and guards every apply call with squaredNorm() > 1e-12, exactly
+    mirroring cf.apply_helmholtz. This cuts apply calls from 8 to ~4
+    for typical 1s-like orbitals where small components vanish.
+    """
+    output = QuatOrbital()
+    H = vp.HelmholtzOperator(QuatOrbital.mra, mu, prec)  # Built ONCE
+
+    for i in range(2):
+        for j in range(4):
+            func_in  = orbital.components[i]._components[j]
+            func_out = output.components[i]._components[j]
+            if func_in.squaredNorm() > 1e-12:             # ← THE KEY GUARD
+                vp.advanced.apply(prec, func_out, H, func_in)
+
+    output.rescale(-1.0 / (2.0 * np.pi))
+    return output
+
+
+def add_vector(orbital_array: List[QuatOrbital],
                coeff_array: List[complex],
-               prec: float) -> CompQuatOrbital:
+               prec: float) -> QuatOrbital:
     """
     Compute a linear combination of orbitals: sum_i c_i * psi_i
 
@@ -1173,9 +603,9 @@ def add_vector(orbital_array: List[CompQuatOrbital],
         Linear combination of orbitals
     """
     if not orbital_array:
-        return CompQuatOrbital()
+        return QuatOrbital()
 
-    output = CompQuatOrbital()
+    output = QuatOrbital()
     output.setZero()
 
     for coeff, orb in zip(coeff_array, orbital_array):

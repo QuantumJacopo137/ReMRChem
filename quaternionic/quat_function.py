@@ -15,6 +15,69 @@ from typing import Optional, Union, List, Tuple
 from orbital4c import complex_fcn as cf  # Import here to avoid circular imports
 
 
+def dot_product(q1, q2):
+    """
+    Computes the dot product of two real quaternionic functions (q1, q2).
+    This is an optimized version that minimizes function calls.
+    <q1|q2> = sum_i <q1_i|q2_i>
+    """
+    return (vp.dot(q1.components[0], q2.components[0]) +
+            vp.dot(q1.components[1], q2.components[1]) +
+            vp.dot(q1.components[2], q2.components[2]) +
+            vp.dot(q1.components[3], q2.components[3]))
+
+
+def add_scaled_to(out, q_a, a, q_b, b, prec):
+    """
+    Computes out += a*q_a + b*q_b for real quaternionic functions.
+    """
+    for i in range(4):
+        vp.advanced.add(prec, out.components[i], [(1.0, out.components[i]), (a, q_a.components[i]), (b, q_b.components[i])])
+
+
+def add_to(out, q_in, prec):
+    """
+    Computes out += q_in for real quaternionic functions.
+    """
+    for i in range(4):
+        vp.advanced.add(prec, out.components[i], [(1.0, out.components[i]), (1.0, q_in.components[i])])
+
+
+def sub_from(out, q_in, prec):
+    """
+    Computes out -= q_in for real quaternionic functions.
+    """
+    for i in range(4):
+        vp.advanced.add(prec, out.components[i], [(1.0, out.components[i]), (-1.0, q_in.components[i])])
+
+
+def add_scaled_complex_to(out, q_a, a, q_b, b, prec):
+    """
+    Computes out += a*q_a + b*q_b for complex quaternionic functions.
+    'a' and 'b' are complex scalars.
+    """
+    a_re, a_im = a.real, a.imag
+    b_re, b_im = b.real, b.imag
+
+    for i in range(4):
+        # Real part of output component
+        vp.advanced.add(prec, out.components[i].real, [
+            (1.0, out.components[i].real),
+            (a_re, q_a.components[i].real),
+            (-a_im, q_a.components[i].imag),
+            (b_re, q_b.components[i].real),
+            (-b_im, q_b.components[i].imag)
+        ])
+        # Imaginary part of output component
+        vp.advanced.add(prec, out.components[i].imag, [
+            (1.0, out.components[i].imag),
+            (a_re, q_a.components[i].imag),
+            (a_im, q_a.components[i].real),
+            (b_re, q_b.components[i].imag),
+            (b_im, q_b.components[i].real)
+        ])
+
+
 class QuatFunction:
     """
     Scalar quaternionic function represented on a multiwavelet basis.
@@ -55,8 +118,7 @@ class QuatFunction:
 
         if complex_valued:
             # Import complex_fcn here to avoid circular imports
-            from orbital4c.complex_fcn import complex_fcn
-            self._components = [complex_fcn() for _ in range(4)]
+            print("not implemented complex quaternionic functions yet")
         else:
             self._components = [vp.FunctionTree(self.mra) for _ in range(4)]
             for comp in self._components:
@@ -513,43 +575,34 @@ class QuatFunction:
 
     def gradient(self, der: str = 'ABGV') -> List['QuatFunction']:
         """
-        Compute the gradient of each component.
-
-        Returns a list of 3 QuatFunctions representing [d/dx, d/dy, d/dz].
+        Calls vp.gradient() once per component (4 calls total) to get all 3
+        directions in one C++ pass. Mirrors complex_fcn.gradient().
         """
-        if self._complex_valued:
-            grad_components = []
-            for i in range(4):
-                grad_components.append(self._components[i].gradient(der))
-
-            result = []
-            for d in range(3):
-                q_grad = QuatFunction(complex_valued=True)
-                for i in range(4):
-                    q_grad._components[i].copy_fcns(
-                        grad_components[i][d].real,
-                        grad_components[i][d].imag
-                    )
-                result.append(q_grad)
-            return result
+        if der == 'ABGV':
+            D = vp.ABGVDerivative(self.mra, 0.0, 0.0)
+        elif der == 'PH':
+            D = vp.PHDerivative(self.mra)
+        elif der == 'BS':
+            D = vp.BSDerivative(self.mra)
         else:
-            if der == 'ABGV':
-                D = vp.ABGVDerivative(self.mra, 0.0, 0.0)
-            elif der == 'PH':
-                D = vp.PHDerivative(self.mra)
-            elif der == 'BS':
-                D = vp.BSDerivative(self.mra)
-            else:
-                raise ValueError(f"Unknown derivative type: {der}")
+            raise ValueError(f"Unknown derivative type: {der}")
 
-            result = []
-            for d in range(3):
-                q_grad = QuatFunction(complex_valued=False)
-                for i in range(4):
-                    if self._components[i].squaredNorm() > 0:
-                        q_grad._components[i] = D(self._components[i], d)
-                result.append(q_grad)
-            return result
+        # 4 calls to vp.gradient, each returns [d/dx, d/dy, d/dz] at once
+        all_grads = []
+        for i in range(4):
+            if self._components[i].squaredNorm() > 0:
+                all_grads.append(vp.gradient(D, self._components[i]))
+            else:
+                all_grads.append(None)
+
+        result = []
+        for d in range(3):
+            q_grad = QuatFunction(complex_valued=False)
+            for i in range(4):
+                if all_grads[i] is not None:
+                    q_grad._components[i] = all_grads[i][d]
+            result.append(q_grad)
+        return result
 
     def derivative(self, direction: int = 0, der: str = 'ABGV') -> 'QuatFunction':
         """
@@ -599,15 +652,38 @@ class QuatFunction:
     
     def sigma_p(self, prec: float, der: str = 'ABGV') -> 'QuatFunction':
         """
-        Compute \sigma . p = -i*d/dx - j*d/dy - k*d/dz
+        Compute sigma.p = i*(d/dx) + j*(d/dy) + k*(d/dz).
+        Assembles output directly via vp.advanced.add — zero intermediates.
         """
         grad = self.gradient(der)
+        gx = grad[0]._components  # [gx0, gx1, gx2, gx3]
+        gy = grad[1]._components
+        gz = grad[2]._components
 
-        output = QuatFunction(complex_valued=self._complex_valued)
-        output = grad[0].i_times(from_left=True) + grad[1].j_times(from_left=True) + grad[2].k_times(from_left=True)
-        
+        output = QuatFunction(complex_valued=False)
 
-        return -output  # REMEMBER: i \sigma_r = e_r, so p . \sigma = - \Nambla . e_r 
+        # out[0] = -gx1 - gy2 - gz3
+        # out[1] = +gx0 + gy3 - gz2  (note: j*q gives +q3 for i-component)
+        # out[2] = -gx3 + gy0 + gz1  (note: k*q gives -q2 for j-component)
+        # out[3] = +gx2 - gy1 + gz0
+        #
+        # Full expansion:
+        # i*[g0,g1,g2,g3] = [-g1, g0, -g3,  g2]
+        # j*[g0,g1,g2,g3] = [-g2, g3,  g0, -g1]
+        # k*[g0,g1,g2,g3] = [-g3,-g2,  g1,  g0]
+        # Sum for each output slot:
+        contrib = [
+            [(-1.0, gx[1]), (-1.0, gy[2]), (-1.0, gz[3])],  # out[0]
+            [(+1.0, gx[0]), (+1.0, gy[3]), (-1.0, gz[2])],  # out[1]
+            [(-1.0, gx[3]), (+1.0, gy[0]), (+1.0, gz[1])],  # out[2]
+            [(+1.0, gx[2]), (-1.0, gy[1]), (+1.0, gz[0])],  # out[3]
+        ]
+        for idx, terms in enumerate(contrib):
+            active = [(c, f) for c, f in terms if f.squaredNorm() > 0]
+            if active:
+                vp.advanced.add(prec, output._components[idx], active)
+
+        return output
     
 
     # ========================================================================
@@ -661,24 +737,18 @@ class QuatFunction:
     # Inner product
     # =========================================================================
 
-    def dot(self, other: 'QuatFunction') -> complex:
+    def dot(self, other: 'QuatFunction') -> float:
         """
-        Compute the L2 inner product: <q, p> = sum_i <qi, pi>
-
-        For complex quaternionic functions, uses complex inner product.
-        Returns a complex number.
+        Compute L2 inner product with zero-guards on every vp.dot call.
+        Mirrors complex_fcn.dot() pattern exactly.
         """
-        if self._complex_valued:
-            result = 0j
-            for i in range(4):
-                result += self._components[i].dot(other._components[i])
-            return result
-        else:
-            result = 0.0
-            for i in range(4):
-                result += vp.dot(self._components[i], other._components[i])
-                
-            return result
+        result = 0.0
+        for i in range(4):
+            a = self._components[i]
+            b = other._components[i]
+            if a.squaredNorm() > 0 and b.squaredNorm() > 0:
+                result += vp.dot(a, b)
+        return result
 
     # =========================================================================
     # Save/Load operations

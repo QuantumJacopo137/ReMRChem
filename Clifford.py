@@ -337,18 +337,21 @@ class ClifFunc:
         g01 * PSI * g12 = - s * g02 + k1 * g12 + k2 + k3 * g23 - j1 * g03 + j2 g0123 - j3 * g01 - p * g31 
         So that 
         g01 * PSI * g12 = k3 - j3 * g01 - s * g02 - j1 * g03 + k3 * g23 - p * g31 + k1 * g12 + j2 * g0123
+        
+        inp|  out  | sign_out
+        i=0:  2,        -1
+        i=1:  6,        1
+        i=2:  0,        1
+        i=3:  4,        1
+        i=4:  3,        -1
+        i=5:  7,        1
+        i=6:  1,        -1
+        i=7:  5,        -1
         """
-        out = ClifFunc()
         q = self._components
-        # Apply the transformation
-        #    's'    '01'   '02'   '03'  '23'   '31'  '12'  '0123'
-        #out._components = [-q[2], -q[6], -q[0], -q[4], -q[3], -q[7], q[1], -q[5]]
-        for i in range(8):
-            sign_L, idx_L = self.basis_product(1, i)  # g01 * B_i
-            out._components[idx_L] = sign_L * q[i]
-            sign_R, idx_R = self.basis_product(idx_L, 6)  # (g01 * B_i) * g12
-            print(f"For i = {i}, idx_out is ", sign_R * sign_L * idx_R)
-        return out
+        self._components = [-q[2], q[6], q[0], q[4], -q[3], q[7], -q[1], -q[5]]
+         
+        
     
     def g02_PSI_g12(self) -> 'ClifFunc':
         """
@@ -356,20 +359,19 @@ class ClifFunc:
         g02 * PSI * g12 = s * g01 - k1 * 1 + k2 * g12 + k3 * g31 - j1 * g0123 - j2 * g03 - j3 * g02 + p * g23
         So that
         g02 * PSI * g12 = - k1 + s * g01 - j3 * g02 - j2 * g03 + k3 * g31 + p * g23 + k2 * g12 - j1 * g0123
+        
+        inp|  out  | sign_out
+        i=0:  1,        1
+        i=1:  0,        -1
+        i=2:  6,        1
+        i=3:  5,        1
+        i=4:  7,        -1
+        i=5:  3,        -1
+        i=6:  2,        -1
+        i=7:  4,        1
         """
-
-        out = ClifFunc()
         q = self._components
-        # Apply the transformation
-        #    's'    '01'   '02'   '03'  '23'  '31'  '12'  '0123'
-        for i in range(8):
-            sign_L, idx_L = self.basis_product(2, i)  # g02 * B_i
-            out._components[idx_L] = sign_L * q[i]
-            sign_R, idx_R = self.basis_product(idx_L, 6)  # (g02 * B_i) * g12
-            print(f"For i = {i}, idx_out is ", sign_R * sign_L * idx_R)
-
-        out._components = [q[1], q[0], -q[6], -q[5], -q[7], -q[3], -q[2], -q[4]]
-        return out
+        self._components = [q[1], -q[0], q[6], q[5], -q[7], -q[3], -q[2], q[4]]
     
     def g03_PSI_g12(self) -> 'ClifFunc':
         """
@@ -377,19 +379,20 @@ class ClifFunc:
         g03 * PSI * g12 = s * g0123 - k1 * g23 - k2 * g31 + k3 * g12 + j1 * g01 + j2 * g02 - j3 * g03 - p * 1
         So that
         g03 * PSI * g12 = - p * 1 + j1 * g01 + j2 * g02 - j3 * g03 - k1 * g23 - k2 * g31 + k3 * g12 + s * g0123
+        
+        inp|  out  | sign_out
+        i=0:  7,        1
+        i=1:  4,        -1
+        i=2:  5,        -1
+        i=3:  6,        1
+        i=4:  1,        1
+        i=5:  2,        1
+        i=6:  3,        -1
+        i=7:  0,        -1
         """
 
-        out = ClifFunc()
         q = self._components
-        # Apply the transformation
-        #    's'    '01'   '02'   '03'  '23'  '31'  '12'  '0123'
-        #out._components = [-q[7], q[4], q[5], -q[6], -q[1], -q[2], q[3], q[0]]
-        for i in range(8):
-            sign_L, idx_L = self.basis_product(3, i)  # g03 * B_i
-            out._components[idx_L] = sign_L * q[i]
-            sign_R, idx_R = self.basis_product(idx_L, 6)  # (g03 * B_i) * g12
-            print(f"For i = {i}, idx_out is ", sign_R * sign_L * idx_R)
-        return out
+        self._components = [q[7], -q[4], -q[5], q[6], q[1], q[2], -q[3], -q[0]]
 
     
 
@@ -411,8 +414,26 @@ class ClifFunc:
         for i in range(8):
             sign, idx = self.basis_product(i, 6)  # B_i * g12
             out._components[idx] = sign * q[i]
+            print(f"i={i}, out_idx={idx}, sign={sign}")
         return out
     
+    def inline_PSI_g12(self):
+        """
+        In-place multiplication of the SOF by g12 on the right: 
+        i=0, out_idx=6, sign=1
+        i=1, out_idx=2, sign=-1
+        i=2, out_idx=1, sign=1
+        i=3, out_idx=7, sign=1
+        i=4, out_idx=5, sign=-1
+        i=5, out_idx=4, sign=1
+        i=6, out_idx=0, sign=-1
+        i=7, out_idx=3, sign=-1
+
+        """
+        q = self._components
+        
+        self._components = [q[6], -q[2], q[1], q[7], -q[5], q[4], -q[0], -q[3]]
+
     def PSI_times_basis(self, idx_A: int, from_the_left = False) -> 'ClifFunc':
         """
         Multiply the SOF from the right by a basis element: PSI * gA
@@ -431,6 +452,14 @@ class ClifFunc:
 
 
         return out
+    
+
+    def apply_potential(self: 'ClifFunc', factor: float, potential: vp.FunctionTree, func: 'ClifFunc', prec: float) -> 'ClifFunc':
+            for i in range(8):
+                if func._components[i].squaredNorm() > 0:
+                    self._components[i] = factor * potential * func._components[i] 
+            self.crop(prec)
+
     # =========================================================================
     # Involutions and operations
     # =========================================================================
@@ -450,6 +479,17 @@ class ClifFunc:
         output._components[7] = self._components[7]   # pseudoscalar part unchanged
         return output
     
+    def inline_reverse(self):
+        """
+        In-place reverse of the spinor operator function, which negates only the bivector components.
+        """
+        self._components[1] = -self._components[1]  
+        self._components[2] = -self._components[2]
+        self._components[3] = -self._components[3]
+        self._components[4] = -self._components[4]   
+        self._components[5] = -self._components[5]   
+        self._components[6] = -self._components[6]
+    
 
     def g0_PSI_g0(self) -> 'ClifFunc':
         """
@@ -459,6 +499,13 @@ class ClifFunc:
         q = self._components
         out._components = [q[0], -q[1], -q[2], -q[3], q[4], q[5], q[6], -q[7]]
         return out
+    
+    def inline_g0_PSI_g0(self):
+        """
+        In-place multiplication of the SOF from both sides by g0: g0 * PSI * g0 = s - k1 * g01 - k2 * g02 - k3 * g03  + j1 * g23 + j2 * g31 + j3 * g12 - p * g0123
+        """
+        q = self._components
+        self._components = [q[0], -q[1], -q[2], -q[3], q[4], q[5], q[6], -q[7]]
 
     def GA_PSI_GB(self, idx_A, idx_B) -> 'ClifFunc':
         """
@@ -538,15 +585,30 @@ class ClifFunc:
     
     def alpha_p(self, prec: float, der: str = 'ABGV') -> 'ClifFunc':
         """
-        Compute (alpha . p) PSI = -i * (alpha_x * d/dx + alpha_y * d/dy + alpha_z * d/dz) -->  (d/dx * g01 + d/dy * g02 + d/dz * g03) PSI * g12
+        Optimized (alpha . p) PSI.
+        Fuses all gradient, sandwich, and summation operations.
         """
-        grad = self.gradient(der)
-
+        grad_x, grad_y, grad_z = self.gradient(der)
+        
+        # Use the fast, pre-computed sandwich product methods
+        # This avoids creating intermediate ClifFunc objects entirely.
+        grad_x.g01_PSI_g12()
+        grad_y.g02_PSI_g12()
+        grad_z.g03_PSI_g12()
+        
+        # Create output object and sum the terms
         output = ClifFunc()
-        output = grad[0].GA_PSI_GB(1,6) + grad[1].GA_PSI_GB(2,6) + grad[2].GA_PSI_GB(3,6)
+        # Fuse the summation of all 3 terms into a single operation
+        for i in range(8):
+            # This vp.advanced.add call is efficient.
+            vp.advanced.add(prec, output._components[i], [
+                (1.0, grad_x._components[i]),
+                (1.0, grad_y._components[i]),
+                (1.0, grad_z._components[i])
+            ])
+            
         output.crop(prec)
-
-        return output 
+        return output
 
     def classicT(self) -> float:
         """
@@ -573,7 +635,6 @@ class ClifFunc:
         H = vp.HelmholtzOperator(mra, mu, prec)
 
         for i in range(8):
-            #if func.squaredNorm() > prec**2:
             if self._components[i].squaredNorm() > 0:
                 vp.advanced.apply(prec, result[i], H, self[i])
             #result[i] *= -1.0/(2*np.pi)
@@ -595,44 +656,40 @@ class ClifFunc:
     # Inner product
     # =========================================================================
 
+
+    
+
     def dot(self, other: 'ClifFunc') -> complex:
         """
-        This would be <Psi | Phi> = /int Psi^dagger * Phi dV
-        since the hermitian conjugate is given by the reverse of the SOF, that is Psi^dagger = g0 * Tilde(Psi) * g0
-        we can write the inner product as <Psi | Phi> = /int (g0 * Tilde(Psi) * g0 * Phi)_scalar dV
-
-        But g0 * Tilde(Psi) * g0 will map:
-            [s, g01, g02, g03, g23, g31, g12, g0123] -> [s, g01, g02, g03, -g23, -g31, -g12, -g0123]
-        So that when i take the scalar part, i need to take the sum of the products of the components which preserve the sign, that is:
-            s * s' + k1 * k1' + k2 * k2' + k3 * k3' + j1 * j1' + j2 * j2' + j3 * j3' + p * p'
-
-        To get the imaginary part, i need to multiply Phi -> i * Phi, which will 
-            Re(i * Phi) = - Im(Phi),
-        Thus i multiply by -i, or conversely i multiply by g12 from the right and take the scalar part of this
-        
+        Optimized inner product <self|other>.
+        <Psi|Phi> = integral[ (g0*Tilde(Psi)*g0 * Phi)_s + i * (g0*Tilde(Psi)*g0 * Phi * g12)_s ]
+        This is calculated by summing the component-wise dot products with the appropriate signs,
+        avoiding the creation of intermediate ClifFunc objects.
         """
+        # Real part: integral of scalar part of (psi_dagger * other)
+        # (s*s' - j1*j1' - j2*j2' - j3*j3' + k1*k1' + k2*k2' + k3*k3' - p*p')
         
-        # TODO: I need to revise the even grade clifford subalgebra to invent this shit
-        # I am scared 
 
-        
-        other_g21 = other.PSI_g12()
+        #other_g21 = other.PSI_g12()
         
 
     
 
         result_real = 0.0
         result_imag = 0.0
+
+        
+        # no need for tilde as i am taking already the scalar part of the product, which is the same for Psi and Tilde(Psi)
         for i in range(8):
             RPC  = vp.dot(self._components[i], other._components[i])
-            IPC  = 1j * vp.dot(self._components[i], other_g21._components[i])
+            sign, idx = self.basis_product(i, 6)  # B_i * g12
+            IPC  = sign * 1j * vp.dot(self._components[i], other._components[idx])
             #print (f"Component {i}: RPC = {RPC}, IPC = {IPC}")
             result_real += RPC
             result_imag += IPC
-
+        
         return result_real + result_imag
-
-
+        
     # =========================================================================
     # Save/Load operations
     # =========================================================================
@@ -711,17 +768,17 @@ def apply_Dirac_Hestenes_hamiltonian(light_speed: float, prec: float, orbital: C
         prec: Precision for cropping intermediate results
         orbital: Input spinor operator function representing the wavefunction
     """
-    tmp = shift * orbital if shift != 0.0 else None
-    # Compute the kinetic term: (alpha . p) PSI
-    kinetic_term = light_speed * orbital.alpha_p(prec)
+    
 
+    
     # Compute the mass term: (beta * m) PSI
-    mass_term =  light_speed**2 * orbital.g0_PSI_g0()
-    
-    output = kinetic_term + mass_term
+    output = light_speed * orbital.alpha_p(prec)
     if shift != 0.0:
-        output = output + tmp
-    
+        output += shift * orbital
+    orbital.inline_g0_PSI_g0()
+    output +=  light_speed**2 * orbital
+    orbital.inline_g0_PSI_g0()
+
     output.crop(prec)
     
     return output
@@ -737,25 +794,17 @@ def Clif_starting_guess_NR(NR_sol: vp.FunctionTree, prec: float, light_speed: fl
     orbital = ClifFunc()
     Ne_part = ClifFunc()
     orbital[0] = NR_sol
+    Ne_part[0] = 1.0/(2*light_speed) * NR_sol 
    
 
-    Ne_part =  orbital.alpha_p(prec) 
-    Ne_part.rescale(1.0/(2*light_speed))
+    
 
 
-    orbital = orbital +  Ne_part
+    orbital = orbital +   Ne_part.alpha_p(prec) 
 
     orbital.normalize()
     orbital.crop(prec)
 
     return orbital
-
-def apply_potential(factor: float, potential: vp.FunctionTree, func: ClifFunc, prec: float) -> 'ClifFunc':
-        output = ClifFunc()
-        for i in range(8):
-            output._components[i] = factor * potential * func._components[i] 
-        
-        output.crop(prec)
-        return output
 
 

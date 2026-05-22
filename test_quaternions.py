@@ -5,7 +5,7 @@ from vampyr import vampyr1d as vp1
 import starting_guess as sg
 # Import quaternionic classes
 from quaternionic.quat_function import QuatFunction
-from quaternionic.quat_orbital import CompQuatOrbital, QuatOrbital
+from quaternionic.quat_orbital import QuatOrbital
 from quaternionic import quat_function as qfun
 from quaternionic import quat_orbital as qorb
 from orbital4c import orbital as orb
@@ -14,13 +14,15 @@ from orbital4c import nuclear_potential as nucpot
 
 # == Define Environment ====
 position = [0.0, 0.0, 0.0]
-charge = 1
+charge = 80
 prec = 1e-6
 thr = prec * 10
 ordr = int(-np.log10(prec) + 4)
-mra = vp.MultiResolutionAnalysis(box=[-50, 50], order=ordr, max_depth=25)
+box = int(np.ceil(float(50/charge)))
+mra = vp.MultiResolutionAnalysis(box=[-box, box], order=ordr, max_depth=25)
 light_speed = 137.0359895
 QuatFunction.mra = mra
+QuatOrbital.mra = mra
 orb.orbital4c.mra = mra
 cf.complex_fcn.mra = mra
 orb.orbital4c.light_speed = light_speed
@@ -35,7 +37,7 @@ Qo = QuatOrbital()
 #A = sg.make_NR_starting_guess(position=position, charge=1, mra=mra, prec=prec/10)
 #(A['La'].real).saveTree("NR_Guess_La")
 
-Qo = sg.make_NR_starting_guess_quaternion(position=position, charge=1, mra=mra, prec=prec/10, light_speed=light_speed, name="NR_Guess_La")
+Qo = sg.make_NR_starting_guess_quaternion(position=position, charge=charge, mra=mra, prec=prec/10, light_speed=light_speed, name="NR_Guess_La")
 
 # SECONDO ME CI DEVE ESSERE UN ERRORE NELLA GENERAZIONE STARTING GUESS, DATO CHE VIENE ALPHA = 0
 Qo.normalize()
@@ -115,6 +117,7 @@ while (idx < 20 and (delta_e > prec/10 or error_norm > thr)):
     
     print('     Converged? ', error_norm, ' > ', thr, '  ----  ', delta_e, ' > ',prec/10)
     Qo = new_orbital
+    exit(0) if idx == 1 else None
     idx += 1
 
 

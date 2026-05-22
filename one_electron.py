@@ -31,27 +31,35 @@ def gs_D_1e(spinorb1, potential, mra, prec, thr, derivative, charge,  output_fil
     old_energy = 0
     delta_e = 1
     idx = 0
-    while (idx < niter and (delta_e > prec/10 or error_norm > thr)):
+    for i in range(4):
+        print("Component", i, "Norm real =", (spinorb1.comp_array[i].real).squaredNorm(), "Norm imag =", (spinorb1.comp_array[i].imag).squaredNorm())
+
+    
+    
+    #while (idx < niter and (delta_e > prec/10 or error_norm > thr)):
+    while (idx < niter and error_norm > thr):
         print()
         print('$ Iteration', idx)
         
-        #print('Norms:')
-        #print('Large Norm:', np.sqrt(spinorb1.squaredLargeNorm()))
-        #print('Small Norm:', np.sqrt(spinorb1.squaredSmallNorm()))
         hd_psi = orb.apply_dirac_hamiltonian(spinorb1, prec, der = derivative)
         v_psi = orb.apply_potential(-1.0, potential, spinorb1, prec)
-        add_psi = hd_psi + v_psi
+        V_prime_psi = (1.0 / (4 * np.pi * c2)) * (v_psi.alpha_p(prec, derivative)).beta2()
+        
+        add_psi = hd_psi + v_psi + V_prime_psi
         energy = spinorb1.dot(add_psi).real
         mu = orb.calc_dirac_mu(energy, light_speed)
-        tmp = orb.apply_helmholtz(v_psi, mu, prec)
-#       tmp = orb.apply_dirac_hamiltonian(v_psi, prec, energy, der = derivative)
+        #tmp = orb.apply_helmholtz(v_psi, mu, prec)
+        tmp = orb.apply_helmholtz(V_prime_psi + v_psi, mu, prec)
+        
         tmp.cropLargeSmall(prec)
         new_orbital = orb.apply_dirac_hamiltonian(tmp, prec, energy, der = derivative)
-#        new_orbital =  orb.apply_helmholtz(tmp, mu, prec)
+
         if(idx > 10):
             new_orbital = new_orbital + spinorb1
+
         new_orbital.cropLargeSmall(prec)
         new_orbital.normalize()
+
         delta_psi = new_orbital - spinorb1
         deltasq = delta_psi.squaredNorm()
         error_norm = np.sqrt(deltasq)
@@ -62,6 +70,7 @@ def gs_D_1e(spinorb1, potential, mra, prec, thr, derivative, charge,  output_fil
         old_energy = energy
         spinorb1 = new_orbital
         print('     Converged? ', error_norm, ' > ', thr, '  ----  ', delta_e, ' > ',prec/10)
+        
         idx += 1
         #print(new_orbital)
     
@@ -84,12 +93,22 @@ def gs_D_1e(spinorb1, potential, mra, prec, thr, derivative, charge,  output_fil
     #write_and_print(output_file,printing_string)
     energy_kutzelnigg = c2*(np.sqrt(1+2*classic_energy/c2)-1)
 
+    # Mag moment correction
+    factor = 1.0 /(4*np.pi * c2)
+    ap_vpsi = v_psi.alpha_p(prec, derivative)
+    beta_ap_vpsi = ap_vpsi.beta2()
+    correction = factor * beta_ap_vpsi.dot(spinorb1).real
+
+
+
     print()
     print() 
     printing_string = f"Exact Energy = {energy_1s - c2}"
     write_and_print(output_file,printing_string)
     printing_string = f"Dirac Energy = {energy - c2}"
     write_and_print(output_file,printing_string)
+    print("Correction =", correction)
+    print("Dirac + Correction =", energy + correction - c2)
     printing_string = f"Kutze Energy = {energy_kutzelnigg}"
     write_and_print(output_file,printing_string)
     printing_string = f"Error Kutze  = {energy_kutzelnigg - energy_1s + light_speed**2}"
@@ -99,6 +118,18 @@ def gs_D_1e(spinorb1, potential, mra, prec, thr, derivative, charge,  output_fil
     printing_string = f"Delta Energy = {energy - old_energy}"
     write_and_print(output_file,printing_string)
     write_and_print(output_file,f'Dirac - Kutzelnigg = {energy - energy_kutzelnigg - light_speed**2}')
+
+    print()
+
+    print('Convergence achieved!')
+    print("T contrib. =", spinorb1.dot(hd_psi).real - c2)
+    print("V contrib. =", v_psi.dot(spinorb1).real)
+    print("Total contrib. =", energy - c2)
+
+    print()
+    for i in range(4):
+        print("Component", i, "Norm real =", (spinorb1.comp_array[i].real).squaredNorm())
+        print("Component", i, "Norm imag =", (spinorb1.comp_array[i].imag).squaredNorm())
 
 
     return spinorb1

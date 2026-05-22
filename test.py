@@ -1,4 +1,5 @@
 ########## Define Enviroment #################
+from unittest import skipUnless
 from orbital4c import complex_fcn as cf
 from orbital4c import orbital as orb
 from orbital4c import nuclear_potential as nucpot
@@ -100,13 +101,15 @@ if(computePotential):
                         symbol, value = parts
                         if symbol == molecule[0][0]:
                             HCR = float(value)
+                            Skin_thickness_in_fm = 2
                             break
         else:
             HCR = radius
+            Skin_thickness_in_fm = epsilon
 
         print(f"-> Using Half Charge Radius for {molecule[0][0]}: {HCR}")
             
-        V_tree = nucpot.Fermi_Dirac(position, charge, box, mra, order, prec, HCR)
+        V_tree = nucpot.Fermi_Dirac(position, charge, box, mra, order, prec, HCR, Skin_thickness_in_fm)
     else:
         exit(-1)
     #V_tree = Peps(f)

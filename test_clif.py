@@ -1,5 +1,6 @@
 from argparse import RawDescriptionHelpFormatter
 from math import e
+from multiprocessing.forkserver import SIGNED_STRUCT
 import numpy as np
 from vampyr import vampyr3d as vp
 from vampyr import vampyr1d as vp1
@@ -28,6 +29,7 @@ clif.ClifFunc.light_speed = light_speed
 
 # == Define Starting Guess ====
 Psi = clif.ClifFunc()
+
 
 
 
@@ -68,21 +70,32 @@ T_array = []
 V_array = []
 energy_array = []
 norm_diff_array = []
+
+hd_psi = clif.ClifFunc()
+v_psi = clif.ClifFunc()
+add_psi = clif.ClifFunc()
+tmp = clif.ClifFunc()
+new_orbital = clif.ClifFunc()
+delta_psi = clif.ClifFunc()
+
+
 while (idx < 100 and ( (delta_e > prec/10) or (error_norm > thr))):
     print()
     print('$ Iteration', idx)
+    v_psi.apply_potential(-1.0, potential, Psi, prec) # Looks like it is working
     # ENERGY EVALUATION
     hd_psi = clif.apply_Dirac_Hestenes_hamiltonian(light_speed, prec, Psi) # Looks like it is working
-    v_psi = clif.apply_potential(-1.0, potential, Psi, prec) # Looks like it is working
 
     add_psi = hd_psi + v_psi
     energy = Psi.dot(add_psi).real
-    T = hd_psi.dot(Psi).real
-    V = v_psi.dot(Psi).real
+    #T = hd_psi.dot(Psi).real
+    #V = v_psi.dot(Psi).real
+    T = 0
+    V = 0
     print()
-    print('     <T_Dirac>', T-c2)
+    #print('     <T_Dirac>', T-c2)
     print('     <T_class>', Psi.classicT())
-    print('     <V>', V)
+    #print('     <V>', V)
     print('     <H>', energy)
     print('     Energy',energy - c2)
     T_array.append(T-c2)
@@ -91,7 +104,7 @@ while (idx < 100 and ( (delta_e > prec/10) or (error_norm > thr))):
     idx_array.append(idx)
     norm_diff_array.append(error_norm)
 
-    ideal_energy = -3532.192093162126
+    #ideal_energy = -3532.192093162126
     # propagator
     mu = orb.calc_dirac_mu(energy, light_speed)
     tmp = v_psi.apply_helmoltz(mu, prec)
