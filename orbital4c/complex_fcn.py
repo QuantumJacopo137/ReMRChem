@@ -288,7 +288,7 @@ def multiply(prec, lhs, rhs):
     vp.advanced.multiply(prec, ii, 1.0, lhs.imag, rhs.imag, -1, True)
     output = complex_fcn()
     output.real = rr - ii
-    output.imag = ri + ri
+    output.imag = ri + ir
     output.crop(prec)
     return output
 

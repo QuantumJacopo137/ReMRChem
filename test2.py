@@ -31,20 +31,21 @@ import sys
 
 
 light_speed = 137.0359895           # default 137.03599913900001
+#light_speed = 137.037
 derivative = "ABGV"                 # possible values: PH, ABGV, BS
-order = 9                           # max order of the polynomials in the MRA
+order = 10                           # max order of the polynomials in the MRA
 box = 15                            # size of the box in atomic units (half box length)     
-prec = 1.0e-4                       # precision threshold for the MRA operations
-thr  = 1.0e-3                       # error threshold for SCF convergence
+prec = 1.0e-6                       # precision threshold for the MRA operations
+thr  = 1.0e-6                       # error threshold for SCF convergence
 auto_box = False
 
 readPotential    = True             # bool
 computePotential = False            # bool 
 savePotential    = True             # bool
-potential = "coulomb_HFYGB"         # possible values: point_charge coulomb_HFYGB homogeneus_charge_sphere gaussian
+potential = "point_charge"         # possible values: point_charge coulomb_HFYGB homogeneus_charge_sphere gaussian
 
-continue_run     = False            # bool
-readOrbitals     = True            # bool
+continue_run     = True            # bool
+readOrbitals     = False            # bool
 saveOrbitals     = True             # bool
 saveGuess        = False
 
@@ -56,7 +57,7 @@ four_el          = True             # bool
 two_components   = True             # bool
 
 
-molecule = [ ["Be", 4, 0.1, 0.2, 0.3, 0, 0] ]
+molecule = [ ["Be", 4, 0.1, 0.2, 0.3, 9.0121 , 0] ]
 
 #
 # 1. This code works now only for atoms and up to two electrons with KTRS
@@ -103,6 +104,10 @@ if(computePotential):
     elif(potential == "point_charge"):
         print("point charge potential")
         f = lambda x: nucpot.point_charge(x, position, charge)
+        V_tree = Peps(f)
+    elif(potential == "homogeneus_charge_sphere"):
+        print("homogeneus charge sphere potential")
+        f = lambda x: nucpot.homogeneus_charge_sphere_1973(x, position, charge, radius)
         V_tree = Peps(f)
     elif(potential == "fermi_dirac"):
         print("Fermi Dirac potential")
@@ -206,10 +211,11 @@ else:
 
 
 
-Dirac_array, Fock_matrix =lazy4el.scf_4el(Dirac_array, V_tree, mra, prec, max_iter=10, auto_save=False, Dampen_alpha= 0.3)
+Dirac_array, Fock_matrix =lazy4el.scf_4el(Dirac_array, V_tree, mra, prec, auto_save=False)
+#Dirac_array, Fock_matrix = lazy4el.scf_4e_4c(Dirac_array, V_tree, mra, prec, auto_save=False)
 
-for i in range(4):
-    Dirac_array[i].save(f"Last_run_spinor_{i}")
+#for i in range(4):
+    #Dirac_array[i].save(f"Last_run_spinor_{i}")
 
 
 
