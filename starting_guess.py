@@ -58,8 +58,96 @@ def make_NR_starting_guess(position, charge, mra, prec, comp = 4, n=1, l=0):
         spinorb1.copy_components(Sa = La_comp)
         #spinorb1.copy_components(Sb = Sa_comp)
         #spinorb1 = init_Right_components(spinorb1, charge, potential)
+        light_speed = orb.orbital4c.light_speed 
+        spinorb1 = spinorb1 + (0.5/light_speed) * spinorb1.alpha_p(prec*10)
         spinorb1.normalize()
-        spinorb1.cropLargeSmall(prec)
+        spinorb1.crop(prec/10)
+    return spinorb1
+
+
+def make_NR_starting_guess_1s_weyl(position, charge, mra, prec):
+    n, l = 1, 0
+    Peps = vp.ScalingProjector(mra, prec)
+    light_speed = orb.orbital4c.light_speed
+    inv_sqrt2 = 1.0 / np.sqrt(2.0)
+
+    guess = lambda x: wf_hydrogenionic_atom(
+        n, l, [x[0] - position[0], x[1] - position[1], x[2] - position[2]], charge
+    )
+    nr_wf_tree = Peps(guess)
+
+    def get_components(x):
+        rx, ry, rz = x[0] - position[0], x[1] - position[1], x[2] - position[2]
+        r = np.sqrt(rx**2 + ry**2 + rz**2)
+        if r < 1e-14:
+            return 0.0, 0.0, 0.0
+        factor = charge / (2.0 * light_speed * r)
+        return factor * rx, factor * ry, factor * rz
+
+    x_comp_tree = Peps(lambda x: get_components(x)[0]) * nr_wf_tree
+    y_comp_tree = Peps(lambda x: get_components(x)[1]) * nr_wf_tree
+    z_comp_tree = Peps(lambda x: get_components(x)[2]) * nr_wf_tree
+
+    # Psi_L = 1/sqrt(2) * (phi - chi)
+    La_comp = cf.complex_fcn()
+    La_comp.copy_fcns(real=inv_sqrt2 * nr_wf_tree, imag=-inv_sqrt2 * z_comp_tree)
+
+    Lb_comp = cf.complex_fcn()
+    Lb_comp.copy_fcns(real=inv_sqrt2 * y_comp_tree, imag=-inv_sqrt2 * x_comp_tree)
+
+    # Psi_R = 1/sqrt(2) * (phi + chi)
+    Sa_comp = cf.complex_fcn() 
+    Sa_comp.copy_fcns(real=inv_sqrt2 * nr_wf_tree, imag=inv_sqrt2 * z_comp_tree)
+    
+    Sb_comp = cf.complex_fcn()
+    Sb_comp.copy_fcns(real=-inv_sqrt2 * y_comp_tree, imag=inv_sqrt2 * x_comp_tree)
+
+    spinorb1 = orb.orbital4c()
+    spinorb1.copy_components(La=La_comp, Lb=Lb_comp, Sa=Sa_comp, Sb=Sb_comp)
+    spinorb1.normalize()
+    spinorb1.crop(prec)
+    
+    return spinorb1
+
+
+def make_NR_starting_guess_with_pot(position, charge, mra, prec, potential, comp = 4, n=1, l=0):
+    nr_wf_tree = vp.FunctionTree(mra)
+    nr_wf_tree.setZero()
+    print("Generated the non-relativistic starting guess for n =", n, "and l =", l, "with charge =", charge)
+    Peps = vp.ScalingProjector(mra, prec)
+    guess = lambda x : wf_hydrogenionic_atom(n,l,[x[0]-position[0], x[1]-position[1], x[2]-position[2]],charge)
+    nr_wf_tree = Peps(guess)
+    c2 = orb.orbital4c.light_speed**2
+    pot_inverse_term = lambda x : charge/((2*c2-3450 -potential(x))*())
+    pot_inverse_term_tree = vp.FunctionTree(mra)
+    pot_inverse_term_tree = Peps(pot_inverse_term)
+
+
+    La_comp = cf.complex_fcn()
+    La_comp.copy_fcns(real = nr_wf_tree)
+
+    Sa_comp = cf.complex_fcn()
+    
+    if (comp == 2):
+        print("2-component spinor not implemented yet")
+        exit(-1)
+        
+    else:
+        spinorb1 = orb.orbital4c()
+        spinorb1.copy_components(La = La_comp)
+        spinorb1.copy_components(Sa = La_comp)
+        
+    
+        light_speed = orb.orbital4c.light_speed 
+        one_over_2mc2 = 1.0/(2*light_speed * light_speed)
+
+        ap_initial = spinorb1.alpha_p(prec/10)
+
+        spinorb1 = spinorb1 + light_speed * one_over_2mc2 * pot_inverse_term_tree * ap_initial
+
+
+        spinorb1.normalize()
+        spinorb1.crop(prec)
     return spinorb1
 
 
