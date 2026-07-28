@@ -84,6 +84,21 @@ def get_param_homogeneous_charge_sphere(atom):
     fileObj.close()
     return float(RMS)
 
+def homogeneus_charge_sphere_1973(position, center, charge, Atom_mass):
+    d2 = ((position[0] - center[0]) ** 2 +
+          (position[1] - center[1]) ** 2 +
+          (position[2] - center[2]) ** 2)
+    distance = np.sqrt(d2)
+
+    R = 2.2677e-5 * Atom_mass**(1/3) # in atomic units
+    if distance >= R:
+        pot = charge / distance
+    else:
+        pot = (charge/(2*R)) * (3.0 - ((distance**2.0)/(R**2.0)))
+
+    return pot
+
+
 def homogeneus_charge_sphere(position, center, charge, RMS):
     RMS2 = RMS**2.0
     d2 = ((position[0] - center[0]) ** 2 +
