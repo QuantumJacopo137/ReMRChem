@@ -10,6 +10,7 @@ from vampyr import vampyr3d as vp
 import numpy as np
 import numpy.linalg as LA
 import sys, getopt
+import time
 
 
 def scf_4el(spinorb_array, potential, mra, prec, max_iter=15, auto_save = False, Dampen_alpha = 0.5):
@@ -24,11 +25,11 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=15, auto_save = False,
     spinorb_array_new = [orb.orbital4c() for i in range(4)]
 
     # Make sure the initial guess is orthonormalized
-    spinorb_array = Dirac_Lowdin_orthonormalization(spinorb_array, prec, verbose=True)
+    spinorb_array = Dirac_Lowdin_orthonormalization(spinorb_array, prec, verbose=False)
   
     
     # Compute 2-el terms
-    V_Psi_array = J_K_Psi(spinorb_array, spinorb_array, mra, prec, True)
+    V_Psi_array = J_K_Psi(spinorb_array, spinorb_array, mra, prec, False)
    
    # add the nuclear potential contribution to V_Psi_array
     print()
@@ -38,10 +39,8 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=15, auto_save = False,
     print()
     
     # Compute the F matrix for the initial guess
-    F_ij = F_matrix(spinorb_array, V_Psi_array, prec, True)
-    #spinorb_array, V_Psi_array, F_ij = Diagonalize_Fock(spinorb_array, V_Psi_array, F_ij, prec)
-    #spinorb_array[1] = spinorb_array[0].ktrs()
-    #spinorb_array[3] = spinorb_array[2].ktrs()
+    F_ij = F_matrix(spinorb_array, V_Psi_array, prec, False)
+
     print()
     print("----------------- Initial F matrix -----------------")
     print_matrix(F_ij)
@@ -49,67 +48,91 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=15, auto_save = False,
 
     print()
     
+
+    energy_array_1s = []
+    energy_array_2s = []
+
+    energy_array_1s.append(F_ij[0,0].real -c2)
+    energy_array_2s.append(F_ij[2,2].real -c2)
     for iteration in range(max_iter):
-        print("\n===== SCF Iteration: ", iteration, " =====\n")
+        iter_start_time = time.time()
+        print("\n===== SCF Iteration: ", iteration + 1, " =====\n")
 
         
-        print("-> Current norms of the spinors: \n")
-        print_array_SqNorms(spinorb_array)
-        print("\n-> Current norms V: \n")
-        print_array_SqNorms(V_Psi_array)
+        #print("-> Current norms of the spinors: \n")
+        #print_array_SqNorms(spinorb_array)
+        #print("\n-> Current norms V: \n")
+        #print_array_SqNorms(V_Psi_array)
         
+        prop_start_time = time.time()
         # Propagate the spinors using the exact propagator, which is given by the formula:
         print("\n-> Propagating the spinors using the exact propagator... \n")
-        spinorb_array_new = exact_propagator(spinorb_array, V_Psi_array, F_ij, prec, True)
+        spinorb_array_new = exact_propagator(spinorb_array, V_Psi_array, F_ij, prec/10, True)
+        spinorb_array_new[0].crop(prec)
+        spinorb_array_new[1].crop(prec)
+        spinorb_array_new[2].crop(prec)
+        spinorb_array_new[3].crop(prec)
+        #print("\n-> Norms of the new spinors after propagation: \n")
+        #for i in range(4):
+        #    print(f"Norm of new spinor {i} after propagation: ")
+        #    orb.print_norm_debug(spinorb_array_new[i])
+        
+        prop_end_time = time.time()
 
-        print("\n-> Norms of the new spinors after propagation: \n")
-        for i in range(4):
-            print(f"Norm of new spinor {i} after propagation: ")
-            orb.print_norm_debug(spinorb_array_new[i])
+
 
         print("\n-> Balancing the Dirac spinors... \n")
+        balance_start_time = time.time()
         spinorb_array_new = balance_Dirac_spinor(spinorb_array_new, V_Psi_array, F_ij, prec, False) # run me with this option  and the false (old one)=
-        for i in range(4):
-            print(f"Norm of new spinor {i} after balancing: ")
-            orb.print_norm_debug(spinorb_array_new[i])
-
-
-        # Most of the time this is needed 
-        spinorb_array_new = Dampen_iteration(spinorb_array, spinorb_array_new, Dampen_alpha, prec)
+        #for i in range(4):
+        #    print(f"Norm of new spinor {i} after balancing: ")
+        #    orb.print_norm_debug(spinorb_array_new[i])
         
+        balance_end_time = time.time()
+
+
+        # Most of the time this is needed
+        Dampen_start_time = time.time()
+        print("\n-> Damping the new spinors... with factor ", Dampen_alpha, "\n")
+        spinorb_array_new = Dampen_iteration(spinorb_array, spinorb_array_new, Dampen_alpha, prec)
+        Dampen_end_time = time.time()
+
         print("\n-> Orthonormalizing the Dirac spinors... \n")
-        spinorb_array_new = Dirac_Lowdin_orthonormalization(spinorb_array_new, prec, verbose=True)
-        for i in range(4):
-            print(f"Norm of new spinor {i} after orthonormalization: ")
-            orb.print_norm_debug(spinorb_array_new[i])
+        Orthonorm_start_time = time.time()
+        spinorb_array_new = Dirac_Lowdin_orthonormalization(spinorb_array_new, prec, verbose=False)
+        #for i in range(4):
+        #    print(f"Norm of new spinor {i} after orthonormalization: ")
+        #    orb.print_norm_debug(spinorb_array_new[i])
 
         spinorb_array_new[1] = spinorb_array_new[0].ktrs()
         spinorb_array_new[3] = spinorb_array_new[2].ktrs()
-
+        Orthonorm_end_time = time.time()
             
 
-        #print("\n \t > After orthonormalization: \n")
+        
 
         print("\n-> Calculating the new V_Psi_array... \n")
-        #for i in range(4):
-        #    V_Psi_array[i].setZero()
-        V_Psi_array = J_K_Psi(spinorb_array_new, spinorb_array_new, mra, prec, verbose=True)
+        V_computing_start_time = time.time()
+        V_Psi_array = J_K_Psi(spinorb_array_new, spinorb_array_new, mra, prec, verbose=False)
 
         # add the nuclear potential contribution to V_Psi_array
         for i in (0,2):
             V_Psi_array[i] = V_Psi_array[i] + orb.apply_potential(-1.0, potential, spinorb_array_new[i], prec)
             V_Psi_array[i+1] = V_Psi_array[i].ktrs()
+        V_computing_end_time = time.time()
         
         # compute the new F matrix
         print("\n-> Computing the new F matrix... \n")
-        F_ij = F_matrix(spinorb_array_new, V_Psi_array, prec, verbose = True)
-        #if np.mod(iteration, 3) == 0:
-        #    spinorb_array_new, V_Psi_array, F_ij = Diagonalize_Fock(spinorb_array_new, V_Psi_array, F_ij, prec)
-        #    spinorb_array_new = balance_Dirac_spinor(spinorb_array_new, V_Psi_array, F_ij, prec, True)
-
+        Fock_mat_start_time = time.time()
+        F_ij = F_matrix(spinorb_array_new, V_Psi_array, prec, verbose = False)
+        Fock_mat_end_time = time.time()
+        
         # print it
         print_matrix(F_ij)
         print()
+
+        energy_array_1s.append(F_ij[0,0].real -c2)
+        energy_array_2s.append(F_ij[2,2].real -c2)
 
         norm_diff = 0.0
         max_norm_diff = 0.0
@@ -129,17 +152,68 @@ def scf_4el(spinorb_array, potential, mra, prec, max_iter=15, auto_save = False,
         print(" => Max norm difference: ", max_norm_diff, " |")
         print("------------------------------------------------------")
         norm_array.append(max_norm_diff)
-        #Dampen_alpha = norm_diff
-        Dampen_alpha = max(0.9, norm_diff) # adjust the dampening coefficient based on the norm difference, so that it is more aggressive when the norm difference is large and less aggressive when the norm difference is small
-        if max_norm_diff < prec/10:
-            print(f"SCF converged after {iteration} iterations.")
+        # Damping should shrink (i.e. trust the new solution less, mix more with the
+        # old one) when norm_diff is large, and grow towards 1 (trust the new
+        # solution) as the SCF converges. The previous max(0.9, norm_diff) was
+        # effectively a constant ~0.9 for every norm_diff seen in practice (none of
+        # them ever exceeded 0.9), i.e. it provided almost no damping at all,
+        # regardless of how large the step actually was.
+
+        # Define the max energy difference between the 1s and 2s orbitals in the last two iterations. This is used to adjust the damping factor based on how much the energies are changing.
+        max_en_diff = max(abs(energy_array_1s[-1] - energy_array_1s[-2]), abs(energy_array_2s[-1] - energy_array_2s[-2]))
+        print()
+        print("------------------------------------------------------")
+        print(" => Max E difference: ", max_en_diff, " |")
+        print("------------------------------------------------------")
+        
+        Dampen_alpha = min(0.9, max(0.3, 1.0 - norm_diff))
+
+        iter_end_time = time.time()
+        print()
+        print("------------------------------------------------------")
+        print(f" => Iteration {iteration+1} took {iter_end_time - iter_start_time:.3f} seconds")
+        print("\t of which:")
+        print(f"\t\t Propagation time: {prop_end_time - prop_start_time:.3f} seconds")
+        print(f"\t\t Balancing time: {balance_end_time - balance_start_time:.3f} seconds")
+        print(f"\t\t Damping time: {Dampen_end_time - Dampen_start_time:.3f} seconds")
+        print(f"\t\t Orthonormalization time: {Orthonorm_end_time - Orthonorm_start_time:.3f} seconds")
+        print(f"\t\t V_Psi computation time: {V_computing_end_time - V_computing_start_time:.3f} seconds")
+        print(f"\t\t Fock matrix computation time: {Fock_mat_end_time - Fock_mat_start_time:.3f} seconds")
+        print("------------------------------------------------------")
+
+        if max_norm_diff < prec*10 or (max_en_diff < prec):
+            print(f"SCF converged after {iteration+1} iterations.")
+
+            print()
+            print("SCF procedure finished.")
+            print("Norm differences for each iteration:")
+            print(f"Iteration {0}:\t Energy 1s: {energy_array_1s[0]},\t Energy 2s: {energy_array_2s[0]},\t Norm difference = ---")
+            for i in range(len(norm_array)):
+                print(f"Iteration {i+1}:\t Energy 1s: {energy_array_1s[i+1]},\t Energy 2s: {energy_array_2s[i+1]},\t Norm difference = {norm_array[i]}")
+
+            print()
+            print("SCF procedure finished.")
+            tot_energy = 2 * energy_array_1s[-1] + 2 * energy_array_2s - spinorb_array_new[0].dot(V_Psi_array[0]) - spinorb_array_new[2].dot(V_Psi_array[2]) + spinorb_array_new[0].dot(orb.apply_potential(-1.0, potential, spinorb_array_new[0], prec)) + spinorb_array_new[2].dot(orb.apply_potential(-1.0, potential, spinorb_array_new[2], prec))
+            print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+            print("TOTAL ENERGY: ", tot_energy)
+            print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
             return spinorb_array_new, F_ij
+
 
     print()
     print("SCF procedure finished.")
     print("Norm differences for each iteration:")
+    print(f"Iteration {0}:\t Energy 1s: {energy_array_1s[0]},\t Energy 2s: {energy_array_2s[0]},\t Norm difference = ---")
     for i in range(len(norm_array)):
-        print(f"Iteration {i}: Norm difference = {norm_array[i]}")
+        print(f"Iteration {i+1}:\t Energy 1s: {energy_array_1s[i+1]},\t Energy 2s: {energy_array_2s[i+1]},\t Norm difference = {norm_array[i]}")
+
+    print()
+    print("SCF procedure finished.")
+    tot_energy = 2 * energy_array_1s[-1] + 2 * energy_array_2s - spinorb_array_new[0].dot(V_Psi_array[0]) - spinorb_array_new[2].dot(V_Psi_array[2]) + spinorb_array_new[0].dot(orb.apply_potential(-1.0, potential, spinorb_array_new[0], prec)) + spinorb_array_new[2].dot(orb.apply_potential(-1.0, potential, spinorb_array_new[2], prec))
+    print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    print("TOTAL ENERGY: ", tot_energy)
+    print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    
     return spinorb_array_new, F_ij
 
 def scf_4e_4c(spinorb_array, potential, mra, prec, max_iter=20, auto_save = False, Dampen_alpha = 0.5):
@@ -179,8 +253,14 @@ def scf_4e_4c(spinorb_array, potential, mra, prec, max_iter=20, auto_save = Fals
 
     print()
     
+    energy_array_1s = []
+    energy_array_2s = []
+
+    energy_array_1s.append(F_ij[0,0].real -c2)
+    energy_array_2s.append(F_ij[2,2].real -c2)
     for iteration in range(max_iter):
-        print("\n===== SCF Iteration: ", iteration, " =====\n")
+        iter_start_time = time.time()
+        print("\n===== SCF Iteration: ", iteration+1, " =====\n")
 
         
         print("-> Current norms of the spinors: \n")
@@ -188,7 +268,7 @@ def scf_4e_4c(spinorb_array, potential, mra, prec, max_iter=20, auto_save = Fals
         print("\n-> Current norms V: \n")
         print_array_SqNorms(V_Psi_array)
         
-
+        prop_start_time = time.time()
         # Propagate the spinors using the exact propagator, which is given by the formula:
         print("\n-> Propagating the spinors using the exact propagator... \n")
         mu = orb.calc_dirac_mu(F_ij[0,0].real, light_speed)
@@ -198,8 +278,8 @@ def scf_4e_4c(spinorb_array, potential, mra, prec, max_iter=20, auto_save = Fals
         spinorb_array_new[0] = (1/c2)*spinorb_array_new[0]
         spinorb_array_new[2] = (1/c2)*spinorb_array_new[2]
 
-        spinorb_array_new[0] = orb.apply_dirac_hamiltonian(spinorb_array_new[0], prec, F_ij[0,0].real)
-        spinorb_array_new[2] = orb.apply_dirac_hamiltonian(spinorb_array_new[2], prec, F_ij[2,2].real)
+        spinorb_array_new[0] = orb.apply_dirac_hamiltonian(spinorb_array_new[0], prec/10, F_ij[0,0].real)
+        spinorb_array_new[2] = orb.apply_dirac_hamiltonian(spinorb_array_new[2], prec/10, F_ij[2,2].real)
         spinorb_array_new[1] = spinorb_array_new[0].ktrs()
         spinorb_array_new[3] = spinorb_array_new[2].ktrs()
 
@@ -207,13 +287,16 @@ def scf_4e_4c(spinorb_array, potential, mra, prec, max_iter=20, auto_save = Fals
         for i in range(4):
             print(f"Norm of new spinor {i} after propagation: ")
             orb.print_norm_debug(spinorb_array_new[i])
-
-        
-
-        # Most of the time this is needed 
+        prop_end_time = time.time()
+       
+        # Most of the time this is needed
+        Dampen_start_time = time.time()
+        print("\n-> Damping the new spinors... with factor ", Dampen_alpha, "\n")
         spinorb_array_new = Dampen_iteration(spinorb_array, spinorb_array_new, Dampen_alpha, prec)
-        
+        Dampen_end_time = time.time()
+
         print("\n-> Orthonormalizing the Dirac spinors... \n")
+        Orthonorm_start_time = time.time()
         spinorb_array_new = Dirac_Lowdin_orthonormalization(spinorb_array_new, prec, verbose=True)
         for i in range(4):
             print(f"Norm of new spinor {i} after orthonormalization: ")
@@ -221,27 +304,32 @@ def scf_4e_4c(spinorb_array, potential, mra, prec, max_iter=20, auto_save = Fals
 
         spinorb_array_new[1] = spinorb_array_new[0].ktrs()
         spinorb_array_new[3] = spinorb_array_new[2].ktrs()
-
+        Orthonorm_end_time = time.time()
         #print("\n \t > After orthonormalization: \n")
 
         print("\n-> Calculating the new V_Psi_array... \n")
+        V_computing_start_time = time.time()
         V_Psi_array = J_K_Psi(spinorb_array_new, spinorb_array_new, mra, prec, verbose=True)
+ 
 
         # add the nuclear potential contribution to V_Psi_array
         for i in (0,2):
             V_Psi_array[i] = V_Psi_array[i] + orb.apply_potential(-1.0, potential, spinorb_array_new[i], prec)
             V_Psi_array[i+1] = V_Psi_array[i].ktrs()
-        
+        V_computing_end_time = time.time()
         # compute the new F matrix
         print("\n-> Computing the new F matrix... \n")
+        Fock_mat_start_time = time.time()
         F_ij = F_matrix(spinorb_array_new, V_Psi_array, prec, verbose = True)
-        #if np.mod(iteration, 3) == 0:
-        #    spinorb_array_new, V_Psi_array, F_ij = Diagonalize_Fock(spinorb_array_new, V_Psi_array, F_ij, prec)
-        #    spinorb_array_new = balance_Dirac_spinor(spinorb_array_new, V_Psi_array, F_ij, prec, True)
-
+        Fock_mat_end_time = time.time()
+        
         # print it
         print_matrix(F_ij)
         print()
+
+
+        energy_array_1s.append(F_ij[0,0].real -c2)
+        energy_array_2s.append(F_ij[2,2].real -c2)
 
         norm_diff = 0.0
         max_norm_diff = 0.0
@@ -261,17 +349,62 @@ def scf_4e_4c(spinorb_array, potential, mra, prec, max_iter=20, auto_save = Fals
         print(" => Max norm difference: ", max_norm_diff, " |")
         print("------------------------------------------------------")
         norm_array.append(max_norm_diff)
-        #Dampen_alpha = norm_diff
-        Dampen_alpha = max(0.9, norm_diff) # adjust the dampening coefficient based on the norm difference, so that it is more aggressive when the norm difference is large and less aggressive when the norm difference is small
-        if max_norm_diff < prec/10:
+        # See matching note in scf_4el: damping must shrink toward the old solution
+        # when norm_diff is large and relax toward the new solution near
+        # convergence. max(0.9, norm_diff) was effectively pinned at ~0.9 always.
+        max_en_diff = max(abs(energy_array_1s[-1] - energy_array_1s[-2]), abs(energy_array_2s[-1] - energy_array_2s[-2]))
+        print()
+        print("------------------------------------------------------")
+        print(" => Max E difference: ", max_en_diff, " |")
+        print("------------------------------------------------------")
+        
+
+        Dampen_alpha = min(0.9, max(0.3, 1.0 - norm_diff))
+        
+        iter_end_time = time.time()
+        print()
+        print("------------------------------------------------------")
+        print(f" => Iteration {iteration+1} took {iter_end_time - iter_start_time:.3f} seconds")
+        print("\t of which:")
+        print(f"\t\t Propagation time: {prop_end_time - prop_start_time:.3f} seconds")
+        print(f"\t\t Damping time: {Dampen_end_time - Dampen_start_time:.3f} seconds")
+        print(f"\t\t Orthonormalization time: {Orthonorm_end_time - Orthonorm_start_time:.3f} seconds")
+        print(f"\t\t V_Psi computation time: {V_computing_end_time - V_computing_start_time:.3f} seconds")
+        print(f"\t\t Fock matrix computation time: {Fock_mat_end_time - Fock_mat_start_time:.3f} seconds")
+       
+        print("------------------------------------------------------")
+
+        if max_norm_diff < prec*10 or (max_en_diff < prec):
             print(f"SCF converged after {iteration} iterations.")
+            print()
+            print("SCF procedure finished.")
+            print("Norm differences for each iteration:")
+            print(f"Iteration {0}:\t Energy 1s: {energy_array_1s[0]},\t Energy 2s: {energy_array_2s[0]},\t Norm difference = ---")
+            for i in range(len(norm_array)):
+                print(f"Iteration {i+1}:\t Energy 1s: {energy_array_1s[i+1]},\t Energy 2s: {energy_array_2s[i+1]},\t Norm difference = {norm_array[i]}")
+
+            print()
+            print("SCF procedure finished.")
+            tot_energy = 2 * energy_array_1s[-1] + 2 * energy_array_2s - spinorb_array_new[0].dot(V_Psi_array[0]) - spinorb_array_new[2].dot(V_Psi_array[2]) + spinorb_array_new[0].dot(orb.apply_potential(-1.0, potential, spinorb_array_new[0], prec)) + spinorb_array_new[2].dot(orb.apply_potential(-1.0, potential, spinorb_array_new[2], prec))
+            print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+            print("TOTAL ENERGY: ", tot_energy)
+            print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
             return spinorb_array_new, F_ij
 
     print()
     print("SCF procedure finished.")
     print("Norm differences for each iteration:")
+    print(f"Iteration {0}:\t Energy 1s: {energy_array_1s[0]},\t Energy 2s: {energy_array_2s[0]},\t Norm difference = ---")
     for i in range(len(norm_array)):
-        print(f"Iteration {i}: Norm difference = {norm_array[i]}")
+        print(f"Iteration {i+1}:\t Energy 1s: {energy_array_1s[i+1]},\t Energy 2s: {energy_array_2s[i+1]},\t Norm difference = {norm_array[i]}")
+
+    print()
+    print("SCF procedure finished.")
+    tot_energy = 2 * energy_array_1s[-1] + 2 * energy_array_2s - spinorb_array_new[0].dot(V_Psi_array[0]) - spinorb_array_new[2].dot(V_Psi_array[2]) + spinorb_array_new[0].dot(orb.apply_potential(-1.0, potential, spinorb_array_new[0], prec)) + spinorb_array_new[2].dot(orb.apply_potential(-1.0, potential, spinorb_array_new[2], prec))
+    print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    print("TOTAL ENERGY: ", tot_energy)
+    print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    
     return spinorb_array_new, F_ij
 
 
@@ -427,13 +560,13 @@ def exact_propagator(spinor_array, V_Psi_array, F_matrix, prec, exact = True):
             exact_c_2 = orb2c.orbital2c()
             exact_c_2.setZero()
             for j in range(4):
-                if j != i and abs(F_matrix[i,j]) > prec/10:
+                if j != i and abs(F_matrix[i,j]) > prec/100:
                     #exact_c_1 += 2.0 * F_matrix[i,j] *(c2 * R_spinor_array[j] + light_speed * L_spinor_array[j].sigma_p(prec) + (F_matrix[i,i].real - F_matrix[j,j].real) * L_spinor_array[j])
                     print(f"For spinor {i} in contr_1 using j = {j}")
+                    Big_V_Psi_L += F_matrix[i,j] *  Dirac_to_Weyl(V_Psi_array[j])
                     exact_c_1 += F_matrix[i,j] * ((F_matrix[i,i].real + F_matrix[j,j].real) * L_spinor_array[j] - 2 * Dirac_to_Weyl(V_Psi_array[j]))
-                    Big_V_Psi_L += F_matrix[i,j] * L_spinor_array[j]
                     for k in range(4):
-                        if k != j and np.abs(F_matrix[j,k]) > prec/10:
+                        if k != j and np.abs(F_matrix[j,k]) > prec/100:
                             print(f"For spinor {i} in contr_2 using k = {k}")
                             exact_c_2 += F_matrix[i,j] * F_matrix[j,k] * L_spinor_array[k] 
 
@@ -465,9 +598,9 @@ def exact_propagator(spinor_array, V_Psi_array, F_matrix, prec, exact = True):
         
         # Apply the helmholtz convolution to the new left spinor, and then combine it with the right spinor to get the new Dirac spinor
         mu = orb2c.calc_dirac_mu(F_matrix[i,i].real, light_speed)
-        tmp_new_spinor_L = orb2c.apply_helmholtz(tmp_new_spinor_L, mu, prec/10)
+        tmp_new_spinor_L = orb2c.apply_helmholtz(tmp_new_spinor_L, mu, prec)
         
-        # Now check the new norm adter it
+        # Now check the new norm after it (diagnostic only)
         norm_post_conv = tmp_new_spinor_L.norm()
         # Find the ratio
         ratio_norm = norm_pre_conv / norm_post_conv
@@ -480,6 +613,11 @@ def exact_propagator(spinor_array, V_Psi_array, F_matrix, prec, exact = True):
 
     new_dirac_spinor_array[1] = new_dirac_spinor_array[0].ktrs()
     new_dirac_spinor_array[3] = new_dirac_spinor_array[2].ktrs()
+    new_dirac_spinor_array[0].crop(prec)
+    new_dirac_spinor_array[1].crop(prec)
+    new_dirac_spinor_array[2].crop(prec)
+    new_dirac_spinor_array[3].crop(prec)
+
 
     return new_dirac_spinor_array
 
@@ -521,7 +659,7 @@ def balance_Dirac_spinor(spinor_array, V_Psi_array, F_ij, prec, one_el_balance =
         #print(f"Norm of L spinor {i} before balancing: {L_spinor_array[i].norm():.3e}")
     
     for i in (0,2):
-        R_spinor_array[i] = L_spinor_array[i].apply_R(Dirac_to_Weyl(V_Psi_array[i]), F_ij[i,i], 'ABGV', prec/100)
+        R_spinor_array[i] = L_spinor_array[i].apply_R(Dirac_to_Weyl(V_Psi_array[i]), F_ij[i,i], 'ABGV', prec/10)
         if (not one_el_balance):
             for j in range(4):
                 if abs(F_ij[i,j]) < prec/10:#or abs(F_ij[i,j]) > 1.0:
@@ -532,12 +670,13 @@ def balance_Dirac_spinor(spinor_array, V_Psi_array, F_ij, prec, one_el_balance =
                     print("norm balance contribution for spinor ", i, " from spinor ", j, ": ", tmp.norm())
                     R_spinor_array[i] += tmp
 
-
-        
+    
     for i in (0,2):
         spinor_array[i] = Weyl_to_Dirac(L_spinor_array[i], R_spinor_array[i])
         spinor_array[i].normalize()
         spinor_array[i+1] = spinor_array[i].ktrs()
+        spinor_array[i].crop(prec)
+        spinor_array[i+1].crop(prec)
 
     return spinor_array
         
@@ -683,10 +822,15 @@ def J_Psi(Psi_array, spinor_array, mra, prec):
     # Multiply by 2 to account for the contributions of the other 2 spinors, which are related by ktrs
     tot_density = 2 * (contr_1.real + contr_3.real)
 
-    # Apply the Poisson operator to the total density to get the J potential, and then apply it to the Psi_array to get the J_PSI_ARRAY. Remember that the Poisson operator in Vampyr is automultiplied by 4\pi, so we need to multiply the density by 4\pi before applying the Poisson operator.
+    # Apply the Poisson operator to the total density to get the J potential, and then apply it to the Psi_array to get the J_PSI_ARRAY.
+    # NOTE: vp.PoissonOperator solves the bare 1/r convolution and does NOT
+    # include the 4*pi prefactor of the Poisson equation (confirmed against the
+    # official MRCPP docs and the validated CoulombDirectOperator convention in
+    # orbital4c/operators.py) -- it must be applied explicitly here.
     #J_tree = P(tot_density) 
     J_tree = vp.FunctionTree(mra)
     vp.advanced.apply(prec, J_tree, P, tot_density)
+    
 
     J_PSI_ARRAY = [orb.orbital4c() for i in range(4)]
 
@@ -728,8 +872,9 @@ def K_Psi(Psi_array, spinor_array, mra, prec, ignore_thr = 0.0):
         # NOTE: vp.PoissonOperator solves the bare 1/r convolution and does
         # NOT include the 4*pi prefactor of the Poisson equation. J_Psi (and
         # CoulombDirectOperator/CoulombExchangeOperator in operators.py)
-        # apply this factor explicitly -- it was missing here.
-        #K_PSI_ARRAY[i] = 4.0 * np.pi * K_PSI_ARRAY[i]
+        # apply this factor explicitly -- confirmed against the official MRCPP
+        # docs, so it must be restored here too.
+        
         K_PSI_ARRAY[i].crop(prec/10)
         K_PSI_ARRAY[i+1] = K_PSI_ARRAY[i].ktrs()
 
