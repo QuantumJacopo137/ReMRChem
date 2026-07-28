@@ -172,13 +172,13 @@ class orbital4c:
         self['Sa'] = sigma_p_L[0]
         self['Sb'] = sigma_p_L[1]
         
-    def derivative(self, dir = 0, der = 'ABGV'):
+    def derivative(self, dir = 0, der = "BS"):
         orb_der = orbital4c()
         for key in self.comp_dict:
             orb_der[key] = self[key].derivative(dir, der) 
         return orb_der
     
-    def gradient(self, der = 'ABGV'):
+    def gradient(self, der = "BS"):
         orb_grad = {}
         for key in self.comp_dict.keys():
             orb_grad[key] = self[key].gradient(der)
@@ -268,7 +268,7 @@ class orbital4c:
             out_orb.comp_array[idx].crop(prec)
         return out_orb
 
-    def alpha_p(self, prec, der = "ABGV"):
+    def alpha_p(self, prec, der = "BS"):
         out_orb = orbital4c()
         orb_grad = self.gradient(der)
         apx = orb_grad[0].alpha(0, prec)
@@ -278,7 +278,7 @@ class orbital4c:
         result.cropLargeSmall(prec)
         return result
 
-    def classicT(self, der = 'ABGV'):
+    def classicT(self, der = "BS"):
         orb_grad = self.gradient(der)
         val = 0
         for i in range(3):
@@ -362,7 +362,7 @@ def print_expectation_value_VV(psi, V, prec):
     print("<  psi | vv_psi> = ", exp2) 
     print("<  psi | v2_psi> = ", exp3) 
 
-def apply_dirac_hamiltonian(orbital, prec, shift = 0.0, der = 'ABGV'):
+def apply_dirac_hamiltonian(orbital, prec, shift = 0.0, der = "BS"):
     beta_phi = orbital.beta(shift)
     grad_phi = orbital.gradient(der)
     alpx_phi = -1j * orbital4c.light_speed * grad_phi[0].alpha(0, prec)

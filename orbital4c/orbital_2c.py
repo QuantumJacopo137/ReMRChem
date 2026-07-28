@@ -3,6 +3,7 @@ import numpy as np
 import copy as cp
 from scipy.special import gamma
 from orbital4c import complex_fcn as cf
+from orbital4c import orbital as orb
 
 class orbital2c:
     """Two components orbital."""
@@ -133,18 +134,22 @@ class orbital2c:
 
         sigma_p_weyl = orbital2c()  
 
-        sigma_p_weyl = self.sigma_p(prec, derivative)
-        
-        prefactor = -1.0 / ( orbital2c.light_speed**2)
-    
+        sigma_p_weyl = self.sigma_p(prec/10, derivative)
+        c2 = (orbital2c.light_speed)**2
+        prefactor = 1.0 / c2
 
+        RKB_spinor = orbital2c()
+        RKB_spinor.setZero()
+        epsilon = energy - c2
+        RKB_spinor = self + (epsilon * prefactor) * self - prefactor * V_Psi 
+      
         if L_to_R:
-            RKB_spinor = (V_Psi - energy*self) +   orbital2c.light_speed * sigma_p_weyl
+            RKB_spinor = RKB_spinor - (prefactor * orbital2c.light_speed) * sigma_p_weyl
         else:
-            RKB_spinor = (V_Psi - energy*self) -   orbital2c.light_speed * sigma_p_weyl
+            RKB_spinor = RKB_spinor + (prefactor * orbital2c.light_speed) * sigma_p_weyl
 
-
-        return prefactor * RKB_spinor
+        RKB_spinor.crop(prec)
+        return RKB_spinor
         
     def apply_R_full(spinor_array, el_id,  F_ij, V_Psi, energy, derivative, prec, L_to_R = True):
         free_R_spinor = spinor_array[el_id].apply_R(V_Psi, energy, derivative, prec, L_to_R)
@@ -157,13 +162,13 @@ class orbital2c:
 
         return free_R_spinor
 
-    def derivative(self, dir = 0, der = 'ABGV'):
+    def derivative(self, dir = 0, der = 'BS'):
         orb_der = orbital2c()
         for key in self.comp_dict:
             orb_der[key] = self[key].derivative(dir, der) 
         return orb_der
     
-    def gradient(self, der = 'ABGV'):
+    def gradient(self, der = 'BS'):
         orb_grad = {}
         for key in self.comp_dict.keys():
             orb_grad[key] = self[key].gradient(der)
@@ -234,6 +239,7 @@ class orbital2c:
 
 
     def sigma(self, direction, prec):
+        # I degined sigma as -sigma to have nice sign conventions
 
         out_orb = orbital2c()
 
@@ -258,7 +264,7 @@ class orbital2c:
             out_orb.comp_array[idx].crop(prec)
         return out_orb
 
-    def sigma_p(self, prec, der = "ABGV"):
+    def sigma_p(self, prec, der = "BS"):
         out_orb = orbital2c()
         orb_grad = self.gradient(der)
         apx = orb_grad[0].sigma(0, prec)
@@ -268,7 +274,7 @@ class orbital2c:
         out_orb = -1j * result
         return out_orb
 
-    def classicT(self, der = 'ABGV'):
+    def classicT(self, der = 'BS'):
         orb_grad = self.gradient(der)
         val = 0
         for i in range(3):
@@ -338,7 +344,7 @@ def dot(self, other):
 
 
 
-""" def apply_dirac_hamiltonian(orbital, prec, shift = 0.0, der = 'ABGV'):
+""" def apply_dirac_hamiltonian(orbital, prec, shift = 0.0, der = 'BS'):
     beta_phi = orbital.beta(shift)
     grad_phi = orbital.gradient(der)
     alpx_phi = -1j * orbital4c.light_speed * grad_phi[0].alpha(0, prec)
@@ -398,9 +404,12 @@ def apply_helmholtz(orbital, mu, prec):
     out_orbital = orbital2c()
     for comp in orbital.comp_dict.keys():
         out_orbital[comp] = cf.apply_helmholtz(orbital[comp], mu, orbital2c.light_speed, prec)
-    #out_orbital.rescale(-1.0/(2*np.pi)) # WHY THIS FACTOR?
-    #out_orbital.rescale((4*np.pi)) # WHY THIS FACTOR?
-    return (1/(4*np.pi)) * out_orbital
+    # The raw VAMPyR HelmholtzOperator output already equals the full Green's
+    # function convolution integral( exp(-mu*r)/(4*pi*r) * f(r') dr' ), i.e. the
+    # 4*pi is already baked into the kernel itself (confirmed against the
+    # official MRCPP docs and README Sec. 2.1: G^mu * f = int exp(-mu|r-r'|)/
+    # (4*pi|r-r'|) f(r') dr'). No extra rescaling should be applied here.
+    return (1.0/(4*np.pi))*out_orbital
 
 def init_1s_orbital(orbital,k,Z,n,alpha,origin,prec):
     gamma_factor = compute_gamma(k,Z,alpha)
@@ -468,16 +477,16 @@ def Diagonal_Term_Weyl_Hamiltonian(Weyl_Spinor, prec, potential, derivative, chi
 
 def calc_energy_Weyl_2c(Psi_L, Psi_R, potential, prec):
     light_speed = orbital2c.light_speed
-    print("     Light speed in calc_energy_Weyl_2c:", light_speed)
+    #print("     Light speed in calc_energy_Weyl_2c:", light_speed)
 
     braket_LL = Psi_L.squaredNorm()
-    print("     braket_LL", braket_LL)
+    #print("     braket_LL", braket_LL)
 
     braket_LR = dot(Psi_L,Psi_R).real
-    print("     braket_LR", braket_LR)
+    #print("     braket_LR", braket_LR)
 
     braket_RR = Psi_R.squaredNorm()
-    print("     braket_RR", braket_RR)
+    #print("     braket_RR", braket_RR)
 
     Dirac_Sq_Norm = braket_LL + braket_RR 
 
@@ -485,12 +494,12 @@ def calc_energy_Weyl_2c(Psi_L, Psi_R, potential, prec):
     tmp2 = Diagonal_Term_Weyl_Hamiltonian(Psi_R, prec, potential, 'BS', chirality_L = False)
 
     exp_val_L = dot(Psi_L,tmp).real
-    print("     exp_val_L", exp_val_L/(Dirac_Sq_Norm))
+    #print("     exp_val_L", exp_val_L/(Dirac_Sq_Norm))
     exp_val_R = dot(Psi_R,tmp2).real
-    print("     exp_val_R", exp_val_R/(Dirac_Sq_Norm))
+    #print("     exp_val_R", exp_val_R/(Dirac_Sq_Norm))
 
     energy = exp_val_R + exp_val_L + 2 * braket_LR * (light_speed**2)
-    print("     energy numerator", energy)
+    #print("     energy numerator", energy)
     energy *= (1.0/(Dirac_Sq_Norm))
     
     return energy
@@ -526,4 +535,28 @@ def print_norm_debug(orbital):
     for comp in orbital.comp_dict.keys():
         print(f" - {comp}: {orbital[comp].squaredNorm()}")
 
-    
+
+def Dirac_to_Weyl(dirac_spinor, weyl_L = True):
+    # Take the 4-component Dirac spinor and return the 2-component Weyl spinor. If weyl_L is True, return the left-handed Weyl spinor, otherwise return the right-handed Weyl spinor.
+    weyl_spinor = orbital2c()
+    weyl_spinor.setZero()
+    if weyl_L:
+        weyl_spinor["alpha"] = dirac_spinor["La"]
+        weyl_spinor["beta"] = dirac_spinor["Lb"]
+    else:
+        weyl_spinor["alpha"] = dirac_spinor["Sa"]
+        weyl_spinor["beta"] = dirac_spinor["Sb"]
+    return weyl_spinor
+
+
+def Weyl_to_Dirac(weyl_spinor_L, weyl_spinor_R):
+    # Build a 4-component Dirac spinor from the left-handed and right-handed Weyl spinors. The left-handed Weyl spinor will be the first 2 components of the Dirac spinor, and the right-handed Weyl spinor will be the last 2 components of the Dirac spinor.
+    dirac_spinor = orb.orbital4c()
+    dirac_spinor.setZero()
+
+    dirac_spinor["La"] = weyl_spinor_L.__getitem__("alpha")
+    dirac_spinor["Lb"] = weyl_spinor_L.__getitem__("beta")
+    dirac_spinor["Sa"] = weyl_spinor_R.__getitem__("alpha")
+    dirac_spinor["Sb"] = weyl_spinor_R.__getitem__("beta")
+
+    return dirac_spinor
