@@ -2,6 +2,8 @@ H   1
 He  2
 Ne 10
 Ar 18
+Kr 36
 Xe 54
 Hg 80
+U 92
 Pu 94
