@@ -25,7 +25,7 @@ class orbital4c:
         return 4
 
     def __str__(self):
-        return ('Large components\n alpha\n{} beta\n{} Small components\n alpha\n{} beta\n{}'.format(self["La"],
+        return ('Left components\n alpha\n{} beta\n{} Right components\n alpha\n{} beta\n{}'.format(self["La"],
                                   self["Lb"],
                                   self["Sa"],
                                   self["Sb"]))
@@ -93,9 +93,9 @@ class orbital4c:
     def squaredNormComp(self, comp):
         return self[comp].squaredNorm()
 
-    def crop(self, prec):
+    def crop(self, prec, abs = False):
         for func in self.comp_array:
-            func.crop(prec)
+            func.crop(prec, abs)
 
     def cropLargeSmall(self, prec):
         largeNorm = np.sqrt(self.squaredLargeNorm())

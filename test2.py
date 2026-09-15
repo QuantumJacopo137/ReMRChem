@@ -35,14 +35,14 @@ light_speed = 137.0359895           # default 137.03599913900001
 derivative = "ABGV"                 # possible values: PH, ABGV, BS
 order = 10                           # max order of the polynomials in the MRA
 box = 15                            # size of the box in atomic units (half box length)     
-prec = 1.0e-6                       # precision threshold for the MRA operations
+prec = 1.0e-7                       # precision threshold for the MRA operations
 thr  = 1.0e-6                       # error threshold for SCF convergence
-auto_box = False
+auto_box = True
 
 readPotential    = True             # bool
 computePotential = False            # bool 
 savePotential    = True             # bool
-potential = "point_charge"         # possible values: point_charge coulomb_HFYGB homogeneus_charge_sphere gaussian
+potential = "fermi_dirac"         # possible values: point_charge coulomb_HFYGB homogeneus_charge_sphere gaussian
 
 continue_run     = True            # bool
 readOrbitals     = False            # bool
@@ -53,11 +53,11 @@ scf              = True
 ktrs             = True
 D2               = False            # bool
 two_electrons    = False            # bool
-four_el          = True             # bool
+four_el          = False             # bool
 two_components   = True             # bool
 
 
-molecule = [ ["Be", 4, 0.1, 0.2, 0.3, 9.0121 , 0] ]
+molecule = [ ["U", 92, 0.1, 0.2, 0.3, 9.0121 , 0] ]
 
 #
 # 1. This code works now only for atoms and up to two electrons with KTRS

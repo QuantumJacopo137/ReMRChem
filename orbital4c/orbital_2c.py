@@ -135,6 +135,8 @@ class orbital2c:
         sigma_p_weyl = orbital2c()  
 
         sigma_p_weyl = self.sigma_p(prec/10, derivative)
+        print("    self:", self)
+        print("     sigma_p_weyl:", sigma_p_weyl)
         c2 = (orbital2c.light_speed)**2
         prefactor = 1.0 / c2
 
@@ -142,15 +144,55 @@ class orbital2c:
         RKB_spinor.setZero()
         epsilon = energy - c2
         RKB_spinor = self + (epsilon * prefactor) * self - prefactor * V_Psi 
-      
+        print("     RKB_spinor:", RKB_spinor)
         if L_to_R:
             RKB_spinor = RKB_spinor - (prefactor * orbital2c.light_speed) * sigma_p_weyl
         else:
             RKB_spinor = RKB_spinor + (prefactor * orbital2c.light_speed) * sigma_p_weyl
 
+
         RKB_spinor.crop(prec)
         return RKB_spinor
-        
+    
+    def apply_R_adaptive(
+        self,
+        V_Psi,
+        energy,
+        derivative,
+        prec,
+        L_to_R=True,
+    ):
+        """Reconstruct the opposite-chirality Weyl spinor adaptively.
+
+        The existing expression
+
+            L + (energy-c^2)/c^2 L - V_Psi/c^2 +/- sigma_p(L)/c
+
+        is simplified to
+
+            energy/c^2 L - V_Psi/c^2 +/- sigma_p(L)/c.
+        """
+        light_speed = orbital2c.light_speed
+        c2 = light_speed**2
+
+        sigma_p_L = self.sigma_p(prec, derivative)
+        derivative_coefficient = (
+            -1.0 if L_to_R else 1.0
+        ) / light_speed
+
+        return add_vector(
+            [self, V_Psi, sigma_p_L],
+            np.asarray(
+                [
+                    energy / c2,
+                    -1.0 / c2,
+                    derivative_coefficient,
+                ],
+                dtype=complex,
+            ),
+            prec,
+        )
+    
     def apply_R_full(spinor_array, el_id,  F_ij, V_Psi, energy, derivative, prec, L_to_R = True):
         free_R_spinor = spinor_array[el_id].apply_R(V_Psi, energy, derivative, prec, L_to_R)
         light_speed = spinor_array[el_id].light_speed
@@ -409,7 +451,8 @@ def apply_helmholtz(orbital, mu, prec):
     # 4*pi is already baked into the kernel itself (confirmed against the
     # official MRCPP docs and README Sec. 2.1: G^mu * f = int exp(-mu|r-r'|)/
     # (4*pi|r-r'|) f(r') dr'). No extra rescaling should be applied here.
-    return (1.0/(4*np.pi))*out_orbital
+    out_orbital.rescale(1.0 / (4.0 * np.pi))
+    return out_orbital
 
 def init_1s_orbital(orbital,k,Z,n,alpha,origin,prec):
     gamma_factor = compute_gamma(k,Z,alpha)

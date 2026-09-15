@@ -1,0 +1,314 @@
+"""Collect one-electron DIRAC and SWORD results in a pandas DataFrame."""
+
+from pathlib import Path
+import re
+
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator, ScalarFormatter
+import pandas as pd
+import numpy as np
+
+
+NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?"
+CHARGE_RE = re.compile(rf"^\s*Charge\s*=\s*({NUMBER})\s*$", re.MULTILINE)
+TIME_RE = re.compile(rf"TIME\s+ELAPSED:\s*({NUMBER})\s*seconds", re.IGNORECASE)
+FILE_RE = re.compile(r"^(?P<atom>.+)_(?P<method>DIRAC|SWORD)(?:_|$)", re.IGNORECASE)
+
+# Plot settings: edit these values to quickly customize the graph.
+# FIGURE_SIZE is (width, height) in inches; increase height for a taller plot.
+FIGURE_SIZE = (9.0, 7.5)
+# Exact colors requested for the energy and runtime columns.
+ENERGY_COLOR = "#2b38ff"
+TIME_COLOR = "#17d9ff"
+# Width of each column within a paired group.
+BAR_WIDTH = 0.37
+# Fixed relative-energy range; zero is required for an honest column baseline.
+ENERGY_AXIS_LIMITS = (0.0, 9)
+# Numerical target and styling for the red precision reference line.
+PRECISION_THRESHOLD = 1.0e-7
+ENERGY_TICK_STEP = 0.25e-7
+THRESHOLD_COLOR = "#d62728"
+# Fixed percentage-axis range.
+TIME_AXIS_LIMITS = (0.0, 100.0)
+
+
+def parse_output(path):
+    """Extract the atom, method, charge, elapsed time, and final energy."""
+    match = FILE_RE.match(path.stem)
+    if match is None:
+        raise ValueError(f"Cannot determine atom and method from file name: {path.name}")
+
+    atom = match.group("atom")
+    method = match.group("method").upper()
+    text = path.read_text(encoding="utf-8", errors="replace")
+    charge_match = CHARGE_RE.search(text)
+    time_matches = TIME_RE.findall(text)
+
+    # Four-electron Be reports "TOTAL ENERGY:". One-electron files use the
+    # method-specific "Dirac Energy =" or "SWORD Energy =" record.
+    if atom == "Be" and path.parent.name == "4el":
+        energy_re = re.compile(rf"TOTAL\s+ENERGY:\s*({NUMBER})", re.IGNORECASE)
+    else:
+        energy_re = re.compile(
+            rf"{method}\s+Energy\s*=\s*({NUMBER})", re.IGNORECASE
+        )
+    energy_matches = energy_re.findall(text)
+
+    missing = []
+    if charge_match is None:
+        missing.append("charge")
+    if not time_matches:
+        missing.append("elapsed time")
+    if not energy_matches:
+        missing.append("total energy")
+    if missing:
+        raise ValueError(f"Missing {', '.join(missing)} in {path}")
+
+    charge = float(charge_match.group(1))
+    if charge.is_integer():
+        charge = int(charge)
+
+    return {
+        "atom label": atom,
+        "method": method,
+        "atom charge": charge,
+        "time": float(time_matches[-1]),
+        # Always select the last energy result in the file.
+        "energy": float(energy_matches[-1]),
+    }
+
+
+def build_dataframe(output_dir=None, four_el_dir=None):
+    """Read 1el results, replace Ne with 4el Be, and combine both methods."""
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent / "outputs" / "1el"
+    output_dir = Path(output_dir)
+    if four_el_dir is None:
+        four_el_dir = output_dir.parent / "4el"
+    four_el_dir = Path(four_el_dir)
+
+    # Exclude one-electron Ne and substitute the DIRAC/SWORD four-electron Be.
+    files = sorted(
+        path for path in output_dir.glob("*.out") if not path.name.startswith("Ne_")
+    )
+    files.extend(sorted(four_el_dir.glob("Be_*.out")))
+    if not files:
+        raise FileNotFoundError(
+            f"No applicable .out files found in {output_dir} and {four_el_dir}"
+        )
+
+    results = {}
+    for path in files:
+        parsed = parse_output(path)
+        atom = str(parsed["atom label"])
+        method = str(parsed["method"])
+        row = results.setdefault(atom, {"atom label": atom})
+
+        previous_charge = row.get("atom charge")
+        if previous_charge is not None and previous_charge != parsed["atom charge"]:
+            raise ValueError(f"Inconsistent charges for atom {atom}")
+        row["atom charge"] = parsed["atom charge"]
+
+        time_column = f"time elapsed {method}"
+        energy_column = f"tot energy {method}"
+        if time_column in row or energy_column in row:
+            raise ValueError(f"Duplicate {method} output for atom {atom}")
+        row[time_column] = parsed["time"]
+        row[energy_column] = parsed["energy"]
+
+    columns = [
+        "atom label",
+        "atom charge",
+        "time elapsed DIRAC",
+        "time elapsed SWORD",
+        "tot energy DIRAC",
+        "tot energy SWORD",
+    ]
+    return (
+        pd.DataFrame(results.values())
+        .reindex(columns=columns)
+        .sort_values("atom charge")
+        .reset_index(drop=True)
+    )
+
+
+def plot_comparison(dataframe, output_path=None, show=True):
+    """Plot accuracy and runtime as paired columns with two y-axis scales."""
+
+    # ---- Data used by the graph ------------------------------------------------
+    # Nuclear charges and atom labels become the two-line x-axis tick labels.
+    charges = dataframe["atom charge"].tolist()
+    atoms = dataframe["atom label"].tolist()
+    # np.arange creates evenly spaced category centers: 0, 1, 2, ...
+    positions = np.arange(len(dataframe))
+
+    # Left-axis values: absolute relative difference between the final energies.
+    energy_relative_difference = (
+        np.log10(np.abs(dataframe["tot energy DIRAC"] - dataframe["tot energy SWORD"])
+        / np.abs(dataframe["tot energy SWORD"]))
+    )
+    energy_relative_difference[0] *= 0.25 # to account that the error control came only for the orbital energy, so that the total energy will have 4 time as much error
+    
+    # Right-axis values: the time used by SWORD as a percentage of DIRAC time.
+    sword_time_percentage = (
+        dataframe["time elapsed SWORD"] / dataframe["time elapsed DIRAC"] * 100.0
+    )
+
+    # ---- Typography and output quality ----------------------------------------
+    # Type-42 fonts remain editable when the graph is exported as a vector PDF.
+    plt.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+            "font.size": 10,
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+        }
+    )
+
+    # FIGURE_SIZE is defined near the top of this file as (width, height), inches.
+    # Increase its second value for a taller graph or its first for a wider graph.
+    figure, energy_axis = plt.subplots(figsize=FIGURE_SIZE, facecolor="white")
+    # The second axis shares x positions but has its own percentage scale.
+    time_axis = energy_axis.twinx()
+
+    # ---- Paired columns --------------------------------------------------------
+    # The energy column is shifted left by half a bar width.
+    energy_bars = energy_axis.bar(
+        positions - BAR_WIDTH / 2,
+        energy_relative_difference,
+        width=BAR_WIDTH,
+        color=ENERGY_COLOR,
+        edgecolor="white",
+        linewidth=0.8,
+        label=r"$|E_{DIRAC}-E_{SWORD}|/|E_{DIRAC}|$",
+        zorder=3,
+    )
+    # The runtime column is shifted right by half a bar width.
+    time_bars = time_axis.bar(
+        positions + BAR_WIDTH / 2,
+        sword_time_percentage,
+        width=BAR_WIDTH,
+        color=TIME_COLOR,
+        edgecolor="white",
+        linewidth=0.8,
+        label=r"$t_{SWORD}/t_{DIRAC}$",
+        zorder=2,
+    )
+
+    # ---- Titles and axis labels ------------------------------------------------
+    energy_axis.set_title(
+        "SWORD Accuracy and Runtime Relative to DIRAC",
+        fontsize=13,
+        fontweight="semibold",
+        pad=14,
+    )
+    energy_axis.set_xlabel("Nuclear charge, Z  (element)", labelpad=12)
+    energy_axis.set_ylabel(
+        r"Relative energy difference  $|E_{DIRAC}-E_{SWORD}|/|E_{DIRAC}|$",
+        labelpad=10,
+    )
+    time_axis.set_ylabel("SWORD runtime relative to DIRAC (%)", labelpad=10)
+
+    # Show the small energy errors with a common scientific-notation multiplier.
+    energy_formatter = ScalarFormatter(useMathText=True)
+    energy_formatter.set_powerlimits((0, 0))
+    energy_axis.yaxis.set_major_formatter(energy_formatter)
+
+    # ---- Axis scales -----------------------------------------------------------
+    # Column plots start at zero and use the fixed energy range configured above.
+    energy_axis.set_ylim(*ENERGY_AXIS_LIMITS)
+    # Use 0.25e-7 spacing so the threshold is exactly the 1.00e-7 major tick.
+    energy_ticks = np.arange(
+        ENERGY_AXIS_LIMITS[0],
+        ENERGY_AXIS_LIMITS[1] + ENERGY_TICK_STEP / 2,
+        ENERGY_TICK_STEP,
+    )
+    energy_axis.set_yticks(energy_ticks)
+
+    # The time scale is fixed at 0-100%, with a labeled tick every 10%.
+    time_axis.set_ylim(*TIME_AXIS_LIMITS)
+    time_axis.yaxis.set_major_locator(MultipleLocator(10))
+
+    # Add the red precision reference rule without an extra text annotation.
+    energy_axis.axhline(
+        PRECISION_THRESHOLD,
+        color=THRESHOLD_COLOR,
+        linestyle="--",
+        linewidth=1.2,
+        zorder=4,
+    )
+
+    # One-electron atoms have ionic charge +(Z - 1). Four-electron Be is neutral,
+    # so it is deliberately shown as plain Be without a zero-charge superscript.
+    charged_atom_labels = [
+        (
+            r"$\mathrm{Be}$"
+            if atom == "Be"
+            else rf"$\mathrm{{{atom}}}^{{+{charge - 1:g}}}$"
+        )
+        for charge, atom in zip(charges, atoms)
+    ]
+
+    # Each x tick shows nuclear charge first and the charged symbol underneath.
+    energy_axis.set_xticks(positions)
+    energy_axis.set_xticklabels(
+        [
+            f"{charge:g}\n{charged_atom}"
+            for charge, charged_atom in zip(charges, charged_atom_labels)
+        ],
+        fontweight="semibold",
+    )
+
+    # ---- Publication-style frame ----------------------------------------------
+    # Remove the top border and match each y axis to its corresponding bar color.
+    energy_axis.spines["top"].set_visible(False)
+    time_axis.spines["top"].set_visible(False)
+    energy_axis.spines["left"].set_color("black")
+    time_axis.spines["right"].set_color("black")
+    energy_axis.spines["bottom"].set_color("black")
+    energy_axis.yaxis.label.set_color(ENERGY_COLOR)
+    time_axis.yaxis.label.set_color(TIME_COLOR)
+    energy_axis.yaxis.get_offset_text().set_color(ENERGY_COLOR)
+    energy_axis.tick_params(
+        axis="y", colors=ENERGY_COLOR, direction="out", length=4, width=0.8
+    )
+    time_axis.tick_params(
+        axis="y", colors=TIME_COLOR, direction="out", length=4, width=0.8
+    )
+    energy_axis.tick_params(axis="x", direction="out", length=4, width=0.8)
+
+    # Keep the threshold tick red after applying the general blue axis styling.
+    figure.canvas.draw()
+    for tick_value, tick in zip(energy_axis.get_yticks(), energy_axis.yaxis.majorTicks):
+        if abs(tick_value - PRECISION_THRESHOLD) < 1.0e-15:
+            tick.label1.set_color(THRESHOLD_COLOR)
+            tick.tick1line.set_color(THRESHOLD_COLOR)
+
+    # Combine both bar containers in one centered legend.
+    energy_axis.legend(
+        handles=[energy_bars, time_bars],
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.01),
+        ncol=2,
+        frameon=False,
+    )
+    # Automatically prevent labels and axes from being clipped.
+    figure.tight_layout()
+
+    # ---- Save and display ------------------------------------------------------
+    # PNG is convenient for slides/posters; PDF remains editable and scalable.
+    if output_path is not None:
+        figure.savefig(output_path, dpi=450, bbox_inches="tight", facecolor="white")
+        figure.savefig(Path(output_path).with_suffix(".pdf"), bbox_inches="tight")
+    if show:
+        plt.show()
+
+    # Returning the objects allows additional customization from another script.
+    return figure, (energy_axis, time_axis)
+
+
+if __name__ == "__main__":
+    dataframe = build_dataframe()
+    print(dataframe.to_string(index=False))
+    plot_comparison(dataframe, output_path="one_electron_comparison.png")

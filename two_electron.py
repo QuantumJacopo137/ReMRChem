@@ -8,7 +8,11 @@ from vampyr import vampyr3d as vp
 import numpy as np
 import numpy.linalg as LA
 import sys, getopt
+# Measure SWORD stages with the same wall clock used in one_electron.py.
+import time
 import one_electron as oneel
+import Lazy_4_el as lz
+from orbital4c import orbital_2c as orb2c
 #
 # Generic coulomb Dirac HF solver. Now works for 2e connected by KTRS.
 # It should be easy to extend it to more complicated cases
@@ -262,14 +266,13 @@ def coulomb_2e_D2_J(spinors, potential, mra, prec, thr, derivative, output_file)
     oneel.write_and_print(output_file, f"Kutzelnigg total energy: {final_total_energy}")
     return spinors[0], spinors[1]
 
-def coulomb_gs_2e(spinorb1, potential, mra, prec, thr, derivative, output_file):
-    error_norm = 1
-    compute_last_energy = False
+def coulomb_gs_2e(spinorb1, potential, mra, prec, thr, derivative, output_file, niter=100):
+    # Bound updates for the unified driver and its optional coarse warm-up.
+    # The extra pass evaluates the last returned state without propagating it.
+    error_norm = float("inf")
     P = vp.PoissonOperator(mra, prec)
     light_speed = spinorb1.light_speed
-    idx = 0 
-#    for i in range(10):
-    while (error_norm > thr or compute_last_energy):
+    for idx in range(niter + 1):
         print()
         print("$ Iteration ", idx)
         n_22 = spinorb1.overlap_density(spinorb1, prec)
@@ -303,6 +306,15 @@ def coulomb_gs_2e(spinorb1, potential, mra, prec, thr, derivative, output_file):
         
 
 
+        # Energies now refer to the current spinor, including the final pass.
+        # Stop here to avoid the old final-energy flag keeping the loop alive.
+        if error_norm <= thr:
+            print("Converged!")
+            break
+        if idx == niter:
+            print(f"Dirac did not converge within {niter} iterations.")
+            break
+
         V_J_K_spinorb1 = v_psi_1 + JmK_phi1
 
         mu = orb.calc_dirac_mu(eps, light_speed)
@@ -325,10 +337,8 @@ def coulomb_gs_2e(spinorb1, potential, mra, prec, thr, derivative, output_file):
         print('     Converged? ', error_norm, ' > ', thr)
 
         spinorb1 = new_orbital
-        spinorb2 = spinorb1.ktrs(prec)
-        if(error_norm < prec):
-            compute_last_energy = True
-        idx += 1
+    # Restore the Kramers partner even when no propagation was requested.
+    spinorb2 = spinorb1.ktrs(prec)
     cke = spinorb1.classicT()
     cpe = spinorb1.dot(v_psi_1).real + JmK.real
     cte = cke + cpe 
@@ -370,7 +380,145 @@ def coulomb_gs_2e(spinorb1, potential, mra, prec, thr, derivative, output_file):
 #                sj = spinors[j]
 #                F[j][i] = sj.dot(RHS + Ds)
 #                F[i][j]  = F[j][]
-#    
+#
+
+
+def coulomb_gs_2e_SWORD(spinorb1, potential, mra, prec, thr, derivative,
+                        output_file="output", niter=100):
+    """Solve a two-electron Kramers pair by propagating L and reconstructing R.
+
+    Use the one-electron SWORD helpers with the local nuclear plus partner
+    Coulomb potential. Keep the existing orbital-norm threshold ``thr``;
+    ``niter`` bounds the SCF loop and ``output_file`` receives final energies.
+    As in gs_SWORD_1e, ``derivative`` controls the energy evaluation while
+    propagation and balance retain the derivative choices of the helpers.
+    """
+    # INITIALIZE: share the four-component setup with the two-component helpers.
+    P = vp.PoissonOperator(mra, prec)
+    light_speed = spinorb1.light_speed
+    c2 = light_speed**2
+    orb2c.orbital2c.mra = mra
+    orb2c.orbital2c.light_speed = light_speed
+
+    # INITIAL ENERGY: build the starting field and orbital energy before the
+    # first propagation, just as gs_SWORD_1e evaluates its trial spinor first.
+    print("\n-> Calculating initial energy...")
+    start_energy = time.time()
+
+    # Kramers partners have the same density. After self J-K cancellation,
+    # the two-electron ground-state potential contains only the partner's J.
+    n_22 = spinorb1.overlap_density(spinorb1, prec)
+    B22 = P(n_22.real) * (4 * np.pi)
+    hd_psi_1 = orb.apply_dirac_hamiltonian(spinorb1, prec, 0.0, der=derivative)
+    v_psi_1 = orb.apply_potential(-1.0, potential, spinorb1, prec)
+    JmK_phi1 = orb.apply_potential(1.0, B22, spinorb1, prec)
+    V_J_K_spinorb1 = v_psi_1 + JmK_phi1
+
+    # Include rest energy in eps for the propagator; subtract it only in output.
+    # Subtract one Coulomb integral from 2*eps to avoid counting the pair twice.
+    JmK = spinorb1.dot(JmK_phi1)
+    eps = (spinorb1.dot(hd_psi_1).real
+           + spinorb1.dot(v_psi_1).real + JmK.real)
+    E_tot_JK = 2 * eps - JmK.real
+    end_energy = time.time()
+    print(f"Energy calculation time: {end_energy - start_energy:.4f} seconds")
+    print("     Orbital energy", eps - c2)
+    print("     Total energy  ", E_tot_JK - 2.0 * c2)
+
+    # SCF: bound the iterations so a nonconverged calculation can still return
+    # its last state. Energy is refreshed after every complete SWORD update.
+    for idx in range(niter):
+        print()
+        print("$ Iteration ", idx)
+
+        # PROPAGATE: the shared SWORD helper convolves only the left-handed
+        # component using the current full potential action and orbital energy.
+        print("\n-> Propagating...")
+        start_prop = time.time()
+        new_orbital = oneel.SWORD_propagator(
+            spinorb1, V_J_K_spinorb1, eps, prec)
+        end_prop = time.time()
+        print(f"Propagation time: {end_prop - start_prop:.4f} seconds")
+
+        # BALANCE: normalize L, then apply the same frozen nuclear/Coulomb
+        # field to the propagated spinor. Reusing the old V*Psi here would
+        # mix old and new orbitals in the reconstruction of R.
+        print("\n-> Balancing...")
+        start_Balance = time.time()
+        new_orbital.normalize()
+        v_psi_balance = orb.apply_potential(-1.0, potential, new_orbital, prec)
+        JmK_balance = orb.apply_potential(1.0, B22, new_orbital, prec)
+        V_J_K_balance = v_psi_balance + JmK_balance
+        new_orbital = oneel.balance_Dirac_spinor(
+            new_orbital, V_J_K_balance, eps, prec)
+
+        # Crop and normalize the reconstructed full spinor as in gs_SWORD_1e.
+        new_orbital.crop(prec)
+        new_orbital.normalize()
+        end_Balance = time.time()
+        print(f"Balancing time: {end_Balance - start_Balance:.4f} seconds")
+
+        # ENERGY: rebuild the partner Coulomb field from the balanced density,
+        # then refresh all actions for this energy and the next propagation.
+        print("\n-> Calculating Energy...")
+        start_energy = time.time()
+        n_22 = new_orbital.overlap_density(new_orbital, prec)
+        B22 = P(n_22.real) * (4 * np.pi)
+        hd_psi_1 = orb.apply_dirac_hamiltonian(new_orbital, prec, 0.0, der=derivative)
+        v_psi_1 = orb.apply_potential(-1.0, potential, new_orbital, prec)
+        JmK_phi1 = orb.apply_potential(1.0, B22, new_orbital, prec)
+        V_J_K_spinorb1 = v_psi_1 + JmK_phi1
+        JmK = new_orbital.dot(JmK_phi1)
+        eps = (new_orbital.dot(hd_psi_1).real
+               + new_orbital.dot(v_psi_1).real + JmK.real)
+        E_tot_JK = 2 * eps - JmK.real
+        end_energy = time.time()
+        print(f"Energy calculation time: {end_energy - start_energy:.4f} seconds")
+        print("\nENERGY VALUES:")
+        print("     Orbital energy", eps - c2)
+        print("     Total energy  ", E_tot_JK - 2.0 * c2)
+        print("==============================================================")
+
+        # CONVERGENCE: compare complete balanced spinors and retain the original
+        # two-electron orbital threshold. The final energy already belongs to
+        # new_orbital, so no extra pass or persistent final-energy flag is needed.
+        delta_psi = new_orbital - spinorb1
+        error_norm = np.sqrt(delta_psi.squaredNorm())
+        print('     Converged? ', error_norm, ' > ', thr)
+        spinorb1 = new_orbital
+
+        # WALL TIME: include the convergence work in the total and print the
+        # same propagation/balancing/energy breakdown as the one-electron loop.
+        print("\n TOT TIME: ", time.time() - start_prop, " seconds, of which:")
+        print("   Propagation: ", end_prop - start_prop, " seconds")
+        print("   Balancing: ", end_Balance - start_Balance, " seconds")
+        print("   Energy: ", end_energy - start_energy, " seconds")
+        if error_norm <= thr:
+            print("Converged!")
+            break
+    else:
+        # Make reaching the iteration limit distinguishable from convergence.
+        print(f"SWORD did not converge within {niter} iterations.")
+
+    # FINAL STATE: regenerate the partner by KTRS from the returned spinor.
+    # All cached energy actions refer to this state, including when niter=0.
+    spinorb2 = spinorb1.ktrs(prec)
+    hd_psi1_one_electron = hd_psi_1 + v_psi_1
+    hd_psi1_two_electron = hd_psi1_one_electron + 0.5 * JmK_phi1
+    exp_val_d2 = hd_psi1_two_electron.squaredNorm()
+    E_kutzelnigg = 2 * (np.sqrt(exp_val_d2) - c2)
+    orb.print_norm_debug(spinorb1)
+
+    # REPORT: retain the existing two-electron diagnostics, label the solver
+    # correctly, and use the explicit output path instead of an undefined name.
+    print()
+    print()
+    oneel.write_and_print(output_file, f'SWORD orbital energy: {eps - c2}')
+    oneel.write_and_print(output_file, f'SWORD total energy: {E_tot_JK - 2.0 * c2}')
+    oneel.write_and_print(output_file, f'Kutzelnigg total energy: {E_kutzelnigg}')
+    return spinorb1, spinorb2
+
+
 
 def calcAlphaDensityVector(spinorb1, spinorb2, prec):
     alphaOrbital =  spinorb2.alpha_vector(prec)

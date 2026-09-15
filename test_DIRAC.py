@@ -38,8 +38,8 @@ order = int(-np.log10(prec)) +4                           # max order of the pol
 box = 15                            # size of the box in atomic units (half box length)     
 auto_box = True
 
-readPotential    = True             # bool
-computePotential = False            # bool 
+readPotential    = False             # bool
+computePotential = True            # bool 
 savePotential    = True             # bool
 potential = "fermi_dirac"         # possible values: point_charge coulomb_HFYGB homogeneus_charge_sphere gaussian
 
@@ -48,7 +48,7 @@ readOrbitals     = False            # bool
 saveOrbitals     = False             # bool
 saveGuess        = False
 
-SWORD_Method     = True             # bool
+SWORD_Method     = False             # bool
 one_electron     = False             # boolv
 
 

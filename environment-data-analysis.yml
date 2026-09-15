@@ -1,0 +1,11 @@
+name: Data_Analysis
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - jupyterlab
+  - ipykernel
+  - numpy
+  - pandas
+  - matplotlib
+  - seaborn

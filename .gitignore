@@ -136,3 +136,7 @@ dmypy.json
 *.out
 *.prof
 *.txt
+
+# Native calculation trees and run outputs
+*.tree
+/outputs/

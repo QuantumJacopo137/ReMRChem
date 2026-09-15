@@ -77,17 +77,59 @@ class complex_fcn:
         output.imag = self.real * coeff
         return output
 
-    def __rmul__(self, other):
+    def __mul__(self, coefficient):
+        if not np.isscalar(coefficient):
+            return NotImplemented
+
+        coefficient = complex(coefficient)
+        real_coefficient = coefficient.real
+        imag_coefficient = coefficient.imag
+
+        # A genuine zero must produce genuinely empty trees.
+        if real_coefficient == 0.0 and imag_coefficient == 0.0:
+            output = complex_fcn()
+            output.setZero()
+            return output
+
+        # Real scalar: do not mix the real and imaginary grids.
+        if imag_coefficient == 0.0:
+            return self.real_mul(real_coefficient)
+
+        # Purely imaginary scalar:
+        #
+        # i*b*(u+i*v) = -b*v + i*b*u
+        #
+        # This swaps the grids but does not union them.
+        if real_coefficient == 0.0:
+            return self.imag_mul(imag_coefficient)
+
+        # General complex coefficient. Both input grids genuinely contribute
+        # to both output grids, so an exact operation requires a union.
         output = complex_fcn()
-        output.real = self.real * np.real(other) - self.imag * np.imag(other)
-        output.imag = self.real * np.imag(other) + self.imag * np.real(other)
+        output.real = (
+            self.real * real_coefficient
+            - self.imag * imag_coefficient
+        )
+        output.imag = (
+            self.imag * real_coefficient
+            + self.real * imag_coefficient
+        )
         return output
+
+
+    def __rmul__(self, coefficient):
+        return self.__mul__(coefficient)
+    #def __rmul__(self, other):
+        #output = complex_fcn()
+        #output.real = self.real * np.real(other) - self.imag * np.imag(other)
+        #output.imag = self.real * np.imag(other) + self.imag * np.real(other)
+        #return output
         
-    def __mul__(self, other):
-        output = complex_fcn()
-        output.real = self.real * np.real(other) - self.imag * np.imag(other)
-        output.imag = self.real * np.imag(other) + self.imag * np.real(other)
-        return output
+    #def __mul__(self, other):
+        #output = complex_fcn()
+        #output.real = self.real * np.real(other) - self.imag * np.imag(other)
+        #output.imag = self.real * np.imag(other) + self.imag * np.real(other)
+        #return output
         
     def __str__(self):
         return ('Real part {}\n Imag part {}'.format(self.real, self.imag))
@@ -334,7 +376,7 @@ def vector_gradient(vector, der = "BS"):
     return tensor
 
 # Note: some thresholding of the contributions should be considered here.
-def add_vector(func_array, coeff_array, prec):
+def add_vector_old(func_array, coeff_array, prec):
     output = complex_fcn()
     real_array = []
     imag_array = []
@@ -347,3 +389,45 @@ def add_vector(func_array, coeff_array, prec):
     vp.advanced.add(prec, output.imag, imag_array)
     return output
 
+
+def add_vector(func_array, coeff_array, prec):
+    """Adaptively compute sum_i coeff_i * func_i.
+
+    Exact-zero coefficients and zero-valued trees are excluded so they do not
+    contribute their grids to the adaptive output.
+    """
+    if len(func_array) != len(coeff_array):
+        raise ValueError(
+            "func_array and coeff_array must have the same length."
+        )
+
+    output = complex_fcn()
+    real_terms = []
+    imag_terms = []
+
+    for function, coefficient in zip(func_array, coeff_array):
+        coefficient = complex(coefficient)
+        coeff_real = float(coefficient.real)
+        coeff_imag = float(coefficient.imag)
+
+        # Re[(a + ib)(u + iv)] = a*u - b*v
+        if coeff_real != 0.0 and function.real.squaredNorm() > 0.0:
+            real_terms.append((coeff_real, function.real))
+
+        if coeff_imag != 0.0 and function.imag.squaredNorm() > 0.0:
+            real_terms.append((-coeff_imag, function.imag))
+
+        # Im[(a + ib)(u + iv)] = a*v + b*u
+        if coeff_real != 0.0 and function.imag.squaredNorm() > 0.0:
+            imag_terms.append((coeff_real, function.imag))
+
+        if coeff_imag != 0.0 and function.real.squaredNorm() > 0.0:
+            imag_terms.append((coeff_imag, function.real))
+
+    if real_terms:
+        vp.advanced.add(prec, output.real, real_terms)
+
+    if imag_terms:
+        vp.advanced.add(prec, output.imag, imag_terms)
+
+    return output

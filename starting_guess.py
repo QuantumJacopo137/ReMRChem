@@ -51,17 +51,17 @@ def make_NR_starting_guess(position, charge, mra, prec, comp = 4, n=1, l=0):
         
     else:
         spinorb1 = orb.orbital4c()
-
+        
         spinorb1.copy_components(La = La_comp)
-        #spinorb1.copy_components(Lb = La_comp)
-
         spinorb1.copy_components(Sa = La_comp)
-        #spinorb1.copy_components(Sb = Sa_comp)
-        #spinorb1 = init_Right_components(spinorb1, charge, potential)
+        
+        
         light_speed = orb.orbital4c.light_speed 
-        spinorb1 = spinorb1 + (0.5/light_speed) * spinorb1.alpha_p(prec*10)
+        spinorb1 += (0.5/light_speed) * spinorb1.alpha_p(prec)
         spinorb1.normalize()
-        spinorb1.crop(prec/10)
+
+        
+        spinorb1.crop(prec)
     return spinorb1
 
 
